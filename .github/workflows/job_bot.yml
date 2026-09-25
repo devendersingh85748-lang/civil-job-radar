@@ -2,20 +2,26 @@ name: Civil Job Bot Automation
 
 on:
   schedule:
-    - cron: '0 */4 * * *'
+    - cron: '0 */4 * * *' # Har 4 ghante me automatically chalega
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   scrape-and-notify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
       - name: Install dependencies
-        run: pip install requests beautifulsoup4 supabase urllib3
+        run: pip install requests beautifulsoup4 urllib3
+
       - name: Run Bot Scraper
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -23,3 +29,12 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
         run: python bot_scraper.py
+
+      - name: Lifetime Keep-Alive Heartbeat (Prevents 60-Day GitHub Pause)
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Keep-Alive"
+          date -u +"Last Automated Scan: %Y-%m-%d %H:%M:%S UTC" > last_scan.txt
+          git add last_scan.txt
+          git commit -m "Automated Radar Heartbeat" || echo "No changes to commit"
+          git push || echo "Push skipped"
