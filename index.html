@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Civil Engg Job Radar — Structured Cards</title>
+  <title>Civil Engg Job Radar — Live & Closed Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen p-4 md:p-8">
@@ -12,16 +12,30 @@
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b border-slate-800 pb-4">
       <div>
         <h1 class="text-2xl md:text-3xl font-extrabold text-emerald-400 tracking-tight">🏗️ CIVIL ENGG VERIFIED JOB RADAR</h1>
-        <p class="text-sm text-slate-400 mt-1">Role-Wise Structured Cards • Highlighted Qualifications (Diploma | B.Tech | M.Tech)</p>
+        <p class="text-sm text-slate-400 mt-1">Live Notifications & Last 30 Days Closed Vacancy Tracker (Diploma | B.Tech | M.Tech)</p>
       </div>
       <span id="job-count" class="mt-3 md:mt-0 bg-emerald-950 border border-emerald-700 text-emerald-300 text-xs font-bold px-3.5 py-1.5 rounded-full">
         Loading...
       </span>
     </div>
 
+    <!-- MAIN STATUS SWITCH: ACTIVE vs CLOSED (LAST 30 DAYS) -->
+    <div class="grid grid-cols-2 gap-3 mb-6 bg-slate-900 p-1.5 rounded-2xl border border-slate-800">
+      <button onclick="setStatusTab('ACTIVE')" id="status-ACTIVE" 
+        class="py-3 px-4 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-2 bg-emerald-600 text-white shadow-lg">
+        <span>🟢 Active / Ongoing Vacancies</span>
+        <span id="count-active" class="bg-black/30 px-2 py-0.5 rounded-full text-xs">0</span>
+      </button>
+      <button onclick="setStatusTab('CLOSED')" id="status-CLOSED" 
+        class="py-3 px-4 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-2 text-slate-400 hover:text-white">
+        <span>🔴 Closed in Last 1 Month</span>
+        <span id="count-closed" class="bg-slate-800 px-2 py-0.5 rounded-full text-xs">0</span>
+      </button>
+    </div>
+
     <!-- Search & Sector Filter -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-      <input id="search-input" type="text" oninput="renderJobs()" placeholder="🔍 Search JE, AE, Lecturer, JSSC, SSC, L&T, Structural, Gurugram..." 
+      <input id="search-input" type="text" oninput="renderJobs()" placeholder="🔍 Search JE, AE, Lecturer, JSSC, SSC, RRB, L&T, Gurugram..." 
         class="md:col-span-2 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500">
       
       <select id="sector-filter" onchange="renderJobs()" class="bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500">
@@ -33,7 +47,7 @@
 
     <!-- Qualification Filter Tabs -->
     <div class="flex flex-wrap gap-2 mb-8">
-      <button onclick="setCategory('ALL')" id="tab-ALL" class="tab-btn bg-emerald-600 text-white text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl">📋 All Cards</button>
+      <button onclick="setCategory('ALL')" id="tab-ALL" class="tab-btn bg-emerald-600 text-white text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl">📋 All Qualifications</button>
       <button onclick="setCategory('D')" id="tab-D" class="tab-btn bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl">👷 Diploma (JE / Technical)</button>
       <button onclick="setCategory('B')" id="tab-B" class="tab-btn bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl">🏛️ B.Tech (AE / PSU / Site)</button>
       <button onclick="setCategory('M')" id="tab-M" class="tab-btn bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl">🎓 M.Tech (Lecturer / Design / Scientist)</button>
@@ -49,43 +63,82 @@
 
     let allJobs = [];
     let activeQual = 'ALL';
+    let activeStatusTab = 'ACTIVE'; // 'ACTIVE' or 'CLOSED'
+
+    function parseDateString(dateStr) {
+      if (!dateStr || dateStr.includes('PDF') || dateStr.includes('Check')) return null;
+      // Handle DD-MM-YYYY or DD/MM/YYYY
+      const dmy = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+      if (dmy) {
+        return new Date(parseInt(dmy[3]), parseInt(dmy[2]) - 1, parseInt(dmy[1]), 23, 59, 59);
+      }
+      // Handle "22 Sep 2026"
+      const parsed = new Date(dateStr);
+      if (!isNaN(parsed.getTime())) {
+        parsed.setHours(23, 59, 59);
+        return parsed;
+      }
+      return null;
+    }
 
     function parseJobMeta(job) {
       const parts = (job.category || '').split('|');
+      let shortCat = 'B.Tech', header = '🟦 【 🏛️ CIVIL RECRUITMENT 】', quals = 'B', startDate = '', endDate = 'Check Official PDF';
+
       if (parts.length >= 5) {
-        return {
-          shortCat: parts[0],
-          header: parts[1],
-          quals: parts[2],
-          startDate: parts[3],
-          endDate: parts[4]
-        };
+        shortCat = parts[0];
+        header = parts[1];
+        quals = parts[2];
+        startDate = parts[3];
+        endDate = parts[4];
+      } else {
+        const c = job.category || '';
+        quals = (c.includes('Diploma') ? 'D' : '') + 'B' + (c.includes('M.Tech') ? 'M' : '');
+        startDate = new Date(job.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
       }
-      // Fallback for older rows
-      const c = job.category || '';
-      const d = c.includes('Diploma') ? 'D' : '';
-      const b = c.includes('B.Tech') || c.includes('Diploma') ? 'B' : '';
-      const m = c.includes('M.Tech') ? 'BM' : '';
-      return {
-        shortCat: c,
-        header: c.includes('Diploma') ? '🟨 【 👷 JUNIOR ENGINEER (JE) / DIPLOMA 】' :
-                c.includes('M.Tech') ? '🟪 【 🎓 LECTURER / SPECIALIST DESIGN 】' :
-                '🟦 【 🏛️ ASSISTANT ENGINEER (AE) / EXECUTIVE 】',
-        quals: (d + b + m) || 'B',
-        startDate: new Date(job.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-        endDate: 'Refer Official PDF'
-      };
+
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+      const endObj = parseDateString(endDate);
+
+      let status = 'ACTIVE';
+      let daysLeft = null;
+
+      if (endObj) {
+        const diffDays = Math.ceil((endObj - now) / (1000 * 60 * 60 * 24));
+        daysLeft = diffDays;
+        if (endObj < now && endObj >= thirtyDaysAgo) {
+          status = 'CLOSED';
+        } else if (endObj < thirtyDaysAgo) {
+          status = 'ARCHIVED'; // Older than 30 days
+        }
+      }
+
+      return { shortCat, header, quals, startDate, endDate, status, daysLeft };
     }
 
     async function fetchJobs() {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/civil_jobs?select=*&order=created_at.desc&limit=300`, {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/civil_jobs?select=*&order=created_at.desc&limit=400`, {
         headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
       });
       const data = await res.json();
       if (Array.isArray(data)) {
-        allJobs = data.map(j => ({ ...j, meta: parseJobMeta(j) }));
+        allJobs = data.map(j => ({ ...j, meta: parseJobMeta(j) })).filter(j => j.meta.status !== 'ARCHIVED');
         renderJobs();
       }
+    }
+
+    function setStatusTab(tab) {
+      activeStatusTab = tab;
+      document.getElementById('status-ACTIVE').className = tab === 'ACTIVE'
+        ? 'py-3 px-4 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-2 bg-emerald-600 text-white shadow-lg'
+        : 'py-3 px-4 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-2 text-slate-400 hover:text-white';
+
+      document.getElementById('status-CLOSED').className = tab === 'CLOSED'
+        ? 'py-3 px-4 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-2 bg-rose-600 text-white shadow-lg'
+        : 'py-3 px-4 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-2 text-slate-400 hover:text-white';
+
+      renderJobs();
     }
 
     function setCategory(q) {
@@ -101,7 +154,7 @@
       const search = document.getElementById('search-input').value.toLowerCase();
       const sector = document.getElementById('sector-filter').value;
 
-      const filtered = allJobs.filter(job => {
+      const baseFiltered = allJobs.filter(job => {
         const matchesQual = activeQual === 'ALL' || job.meta.quals.includes(activeQual);
         const matchesSearch = job.title.toLowerCase().includes(search) || job.source.toLowerCase().includes(search) || job.meta.header.toLowerCase().includes(search);
         const isPrivate = job.source.toLowerCase().includes('private') || job.source.toLowerCase().includes('mnc') || job.source.toLowerCase().includes('epc');
@@ -109,21 +162,43 @@
         return matchesQual && matchesSearch && matchesSector;
       });
 
-      document.getElementById('job-count').innerText = `${filtered.length} Active Job Cards`;
+      const activeList = baseFiltered.filter(j => j.meta.status === 'ACTIVE');
+      const closedList = baseFiltered.filter(j => j.meta.status === 'CLOSED');
+
+      document.getElementById('count-active').innerText = activeList.length;
+      document.getElementById('count-closed').innerText = closedList.length;
+
+      const finalJobs = activeStatusTab === 'ACTIVE' ? activeList : closedList;
+      document.getElementById('job-count').innerText = activeStatusTab === 'ACTIVE' 
+        ? `${finalJobs.length} Active Jobs` 
+        : `${finalJobs.length} Closed (Last 30 Days)`;
 
       const container = document.getElementById('jobs-container');
-      container.innerHTML = filtered.map(job => {
+      if (finalJobs.length === 0) {
+        container.innerHTML = `<div class="col-span-2 bg-slate-900 border border-slate-800 p-8 rounded-2xl text-center text-slate-400">
+          No ${activeStatusTab === 'ACTIVE' ? 'active' : 'recently closed'} jobs matching this filter.
+        </div>`;
+        return;
+      }
+
+      container.innerHTML = finalJobs.map(job => {
         const hasD = job.meta.quals.includes('D');
         const hasB = job.meta.quals.includes('B');
         const hasM = job.meta.quals.includes('M');
+        const isClosed = job.meta.status === 'CLOSED';
+        const isClosingSoon = !isClosed && job.meta.daysLeft !== null && job.meta.daysLeft >= 0 && job.meta.daysLeft <= 5;
 
         return `
-          <div class="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-lg flex flex-col justify-between">
+          <div class="bg-slate-900 rounded-2xl border ${isClosed ? 'border-rose-900/60 opacity-90' : 'border-slate-800'} overflow-hidden shadow-lg flex flex-col justify-between">
             <div>
               <!-- Card Header Banner -->
-              <div class="bg-slate-800/90 border-b border-slate-700 px-4 py-2.5 flex justify-between items-center">
+              <div class="bg-slate-800/90 border-b border-slate-700 px-4 py-2.5 flex justify-between items-center gap-2">
                 <span class="text-xs md:text-sm font-extrabold tracking-wide text-white">${job.meta.header}</span>
-                <span class="text-[11px] font-semibold bg-slate-950 text-emerald-400 border border-slate-700 px-2.5 py-0.5 rounded-md">${job.source}</span>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  ${isClosed ? `<span class="text-[10px] font-extrabold bg-rose-600 text-white px-2 py-0.5 rounded">🔴 CLOSED</span>` : ''}
+                  ${isClosingSoon ? `<span class="text-[10px] font-extrabold bg-amber-500 text-black px-2 py-0.5 rounded animate-pulse">⏳ ${job.meta.daysLeft}d LEFT</span>` : ''}
+                  <span class="text-[11px] font-semibold bg-slate-950 text-emerald-400 border border-slate-700 px-2.5 py-0.5 rounded-md">${job.source}</span>
+                </div>
               </div>
 
               <!-- Body -->
@@ -134,13 +209,13 @@
                 <div>
                   <p class="text-[11px] uppercase tracking-wider text-slate-400 font-bold mb-1.5">🎓 Eligible Qualifications:</p>
                   <div class="grid grid-cols-3 gap-2">
-                    <div class="text-center py-1.5 rounded-lg text-xs font-extrabold border ${hasD ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-sm' : 'bg-slate-950/40 border-slate-800 text-slate-600'}">
+                    <div class="text-center py-1.5 rounded-lg text-xs font-extrabold border ${hasD ? 'bg-amber-500/20 border-amber-400 text-amber-300' : 'bg-slate-950/40 border-slate-800 text-slate-600'}">
                       ${hasD ? '✅ DIPLOMA' : '⬜ Diploma'}
                     </div>
-                    <div class="text-center py-1.5 rounded-lg text-xs font-extrabold border ${hasB ? 'bg-blue-500/20 border-blue-400 text-blue-300 shadow-sm' : 'bg-slate-950/40 border-slate-800 text-slate-600'}">
+                    <div class="text-center py-1.5 rounded-lg text-xs font-extrabold border ${hasB ? 'bg-blue-500/20 border-blue-400 text-blue-300' : 'bg-slate-950/40 border-slate-800 text-slate-600'}">
                       ${hasB ? '✅ B.TECH' : '⬜ B.Tech'}
                     </div>
-                    <div class="text-center py-1.5 rounded-lg text-xs font-extrabold border ${hasM ? 'bg-purple-500/20 border-purple-400 text-purple-300 shadow-sm' : 'bg-slate-950/40 border-slate-800 text-slate-600'}">
+                    <div class="text-center py-1.5 rounded-lg text-xs font-extrabold border ${hasM ? 'bg-purple-500/20 border-purple-400 text-purple-300' : 'bg-slate-950/40 border-slate-800 text-slate-600'}">
                       ${hasM ? '✅ M.TECH' : '⬜ M.Tech'}
                     </div>
                   </div>
@@ -149,12 +224,12 @@
                 <!-- Start Date & End Date Box -->
                 <div class="grid grid-cols-2 gap-2 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 text-xs">
                   <div>
-                    <span class="text-slate-400 block text-[11px]">🟢 Start / Posted Date</span>
+                    <span class="text-slate-400 block text-[11px]">🟢 Start Date</span>
                     <span class="font-bold text-emerald-400">${job.meta.startDate}</span>
                   </div>
                   <div class="border-l border-slate-800 pl-3">
-                    <span class="text-slate-400 block text-[11px]">🔴 Last Date (End)</span>
-                    <span class="font-bold text-rose-400">${job.meta.endDate}</span>
+                    <span class="text-slate-400 block text-[11px]">${isClosed ? '🔴 Closed On' : '🔴 Last Date'}</span>
+                    <span class="font-bold ${isClosed ? 'text-rose-500 line-through' : 'text-rose-400'}">${job.meta.endDate}</span>
                   </div>
                 </div>
               </div>
@@ -163,8 +238,8 @@
             <!-- Card Footer Button -->
             <div class="p-3 bg-slate-950/50 border-t border-slate-800/80">
               <a href="${job.link}" target="_blank" rel="noopener noreferrer" 
-                 class="block w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs md:text-sm py-2.5 rounded-xl text-center transition">
-                📄 View Official Notification / Apply Now ↗
+                 class="block w-full ${isClosed ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'} font-extrabold text-xs md:text-sm py-2.5 rounded-xl text-center transition">
+                ${isClosed ? '📄 View Closed Notification PDF / Syllabus ↗' : '📄 View Official Notification / Apply Now ↗'}
               </a>
             </div>
           </div>
