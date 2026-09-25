@@ -51,7 +51,7 @@ def has_word(text: str, phrases: list) -> bool:
     return False
 
 # ==========================================
-# 2. MASTER CLASSIFIER: JOBS + ADMIT CARDS + ZERO-MISS ADVTS
+# 2. MASTER 4-SECTION CLASSIFIER (JOBS, EXAM DATES, ADMIT CARDS)
 # ==========================================
 def analyze_job_card(title: str, source: str):
     t = title.lower().strip()
@@ -66,22 +66,20 @@ def analyze_job_card(title: str, source: str):
     found_dates = re.findall(date_pattern, title, re.IGNORECASE)
     today_str = datetime.now().strftime("%d %b %Y")
     start_date = found_dates[0] if len(found_dates) >= 2 else today_str
-    end_date = found_dates[-1] if len(found_dates) >= 1 else "Check Official Notice"
+    end_date = found_dates[-1] if len(found_dates) >= 1 else "Check Official PDF"
 
-    # ------------------------------------------
-    # A. CHECK FOR ADMIT CARD / EXAM DATE UPDATES
-    # ------------------------------------------
-    admit_triggers = [
-        "admit card", "hall ticket", "e-admit card", "call letter",
-        "exam date", "examination date", "date of examination",
-        "exam schedule", "examination schedule", "city intimation"
-    ]
     civil_exam_targets = [
         "junior engineer", "je", "jdlcce", "ssc je", "rrb je",
         "assistant engineer", "ae", "civil", "polytechnic", "lecturer",
         "technical", "engineering", "gate", "ese", "dfccil", "dmrc", "psu"
     ]
 
+    # ------------------------------------------
+    # A. CHECK FOR ADMIT CARD / HALL TICKET
+    # ------------------------------------------
+    admit_triggers = [
+        "admit card", "hall ticket", "e-admit card", "call letter", "city intimation"
+    ]
     if not is_private and any(trig in t for trig in admit_triggers) and has_word(t, civil_exam_targets):
         dip = has_word(t, ["je", "junior engineer", "jdlcce", "ssc je", "rrb je", "diploma", "technical"])
         mtech = has_word(t, ["lecturer", "polytechnic", "gate", "scientist", "assistant professor"])
@@ -89,7 +87,7 @@ def analyze_job_card(title: str, source: str):
         if not dip and not mtech:
             dip = True
 
-        header = "🩵 【 🎫 ADMIT CARD / EXAM DATE OUT 】"
+        header = "🩵 【 🎫 ADMIT CARD / HALL TICKET OUT 】"
         qual_code = f"{'D' if dip else ''}{'B' if btech else ''}{'M' if mtech else ''}"
         packed_category = f"ADMIT_CARD|{header}|{qual_code}|{start_date}|{end_date}"
 
@@ -101,16 +99,46 @@ def analyze_job_card(title: str, source: str):
             "start_date": start_date,
             "end_date": end_date,
             "packed_category": packed_category,
-            "sector": "🎫 Exam / Admit Card Alert"
+            "sector": "🎫 Admit Card Alert"
         }
 
-    # Block non-job notices if not an Admit Card/Exam Date
+    # ------------------------------------------
+    # B. CHECK FOR UPCOMING EXAM DATES / SCHEDULE
+    # ------------------------------------------
+    exam_date_triggers = [
+        "exam date", "examination date", "date of examination",
+        "exam schedule", "examination schedule", "exam calendar",
+        "examination calendar", "tentative schedule", "cbt date", "schedule of examination"
+    ]
+    if not is_private and any(trig in t for trig in exam_date_triggers) and has_word(t, civil_exam_targets):
+        dip = has_word(t, ["je", "junior engineer", "jdlcce", "ssc je", "rrb je", "diploma", "technical"])
+        mtech = has_word(t, ["lecturer", "polytechnic", "gate", "scientist", "assistant professor"])
+        btech = True
+        if not dip and not mtech:
+            dip = True
+
+        header = "🟧 【 📅 UPCOMING EXAM DATE / SCHEDULE 】"
+        qual_code = f"{'D' if dip else ''}{'B' if btech else ''}{'M' if mtech else ''}"
+        packed_category = f"EXAM_DATE|{header}|{qual_code}|{start_date}|{end_date}"
+
+        return {
+            "header": header,
+            "d_badge": "✅ <b>DIPLOMA</b>" if dip else "⬜ Diploma",
+            "b_badge": "✅ <b>B.TECH</b>" if btech else "⬜ B.Tech",
+            "m_badge": "✅ <b>M.TECH</b>" if mtech else "⬜ M.Tech",
+            "start_date": start_date,
+            "end_date": end_date,
+            "packed_category": packed_category,
+            "sector": "📅 Upcoming Exam Schedule"
+        }
+
+    # Block non-job notices if not Admit Card or Exam Date
     non_job_notices = ["result", "merit list", "interview", "document verification", "syllabus", "calendar", "press release", "cutoff", "score card"]
     if any(nj in t for nj in non_job_notices):
         return None
 
     # ------------------------------------------
-    # B. CHECK FOR NEW RECRUITMENT / VACANCIES
+    # C. CHECK FOR NEW RECRUITMENT / VACANCIES
     # ------------------------------------------
     if not is_private:
         recruitment_signals = [
@@ -171,7 +199,7 @@ def analyze_job_card(title: str, source: str):
         short_cat = "B.Tech"
 
     # ------------------------------------------
-    # C. ZERO-MISS CATCHER FOR VAGUE GOVT "ADVT NO."
+    # D. ZERO-MISS CATCHER FOR VAGUE GOVT "ADVT NO."
     # ------------------------------------------
     elif not is_private and any(v in t for v in ["advt. no", "advt no", "advertisement no", "employment notice no"]):
         dip, btech, mtech = True, True, True
@@ -207,11 +235,20 @@ def send_telegram_card(title, source, link, info):
 
     safe_title = html.escape(title)
     safe_source = html.escape(source)
-    is_admit = "ADMIT_CARD" in info["packed_category"]
+    cat_str = info["packed_category"]
 
-    date_label_1 = "🟢 <b>Notice Date:</b>" if is_admit else "🟢 <b>Notification Date:</b>"
-    date_label_2 = "🔴 <b>Exam / Schedule:</b>" if is_admit else "🔴 <b>Last Date:</b>"
-    btn_label = "🎫 Download Admit Card / View Exam Notice ↗" if is_admit else "📄 View Official Notification / Apply ↗"
+    if cat_str.startswith("ADMIT_CARD"):
+        date_label_1 = "🟢 <b>Notice Date:</b>"
+        date_label_2 = "🎫 <b>Status:</b>"
+        btn_label = "🎫 Download Admit Card / Hall Ticket ↗"
+    elif cat_str.startswith("EXAM_DATE"):
+        date_label_1 = "🟢 <b>Notice Date:</b>"
+        date_label_2 = "📅 <b>Exam Date:</b>"
+        btn_label = "📅 View Official Exam Date Schedule ↗"
+    else:
+        date_label_1 = "🟢 <b>Notification Date:</b>"
+        date_label_2 = "🔴 <b>Last Date:</b>"
+        btn_label = "📄 View Official Notification / Apply ↗"
 
     card_text = (
         f"<b>{info['header']}</b>\n"
@@ -279,7 +316,7 @@ def process_item(title, source, link):
         print(f"Database Warning: {e}")
 
 # ==========================================
-# 4. OFFICIAL GOVT, ADMIT CARD & MNC SCRAPERS
+# 4. OFFICIAL GOVT, EXAM DATE, ADMIT CARD & MNC SCRAPERS
 # ==========================================
 DIRECT_PORTALS = [
     {"name": "JSSC Jharkhand", "url": "https://jssc.jharkhand.gov.in/notices", "base": "https://jssc.jharkhand.gov.in"},
@@ -324,8 +361,12 @@ VERIFIED_SEARCH_FEEDS = [
         "query": '(site:careers.ntpc.co.in OR site:powergrid.in OR site:iocl.com OR site:rvnl.org OR site:nhpcindia.com OR site:thdc.co.in) ("Civil Engineer" OR "Executive Trainee" OR "Diploma Trainee" OR "Assistant Engineer") ("Recruitment" OR "Advt")'
     },
     {
-        "source": "Official Exam & Admit Card Radar",
-        "query": '(site:ssc.gov.in OR site:jssc.jharkhand.gov.in OR site:jpsc.gov.in OR site:bpsc.bih.nic.in OR site:uppsc.up.nic.in OR site:rrbcdg.gov.in) ("Junior Engineer" OR "Assistant Engineer" OR "Polytechnic Lecturer" OR "SSC JE" OR "RRB JE" OR "JDLCCE") ("Admit Card" OR "Exam Date" OR "Examination Schedule" OR "Hall Ticket")'
+        "source": "Official Upcoming Exam Date Radar",
+        "query": '(site:ssc.gov.in OR site:jssc.jharkhand.gov.in OR site:jpsc.gov.in OR site:bpsc.bih.nic.in OR site:uppsc.up.nic.in OR site:rrbcdg.gov.in) ("Junior Engineer" OR "Assistant Engineer" OR "Polytechnic Lecturer" OR "SSC JE" OR "RRB JE" OR "JDLCCE") ("Exam Date" OR "Examination Schedule" OR "Date of Examination")'
+    },
+    {
+        "source": "Official Admit Card Radar",
+        "query": '(site:ssc.gov.in OR site:jssc.jharkhand.gov.in OR site:jpsc.gov.in OR site:bpsc.bih.nic.in OR site:uppsc.up.nic.in OR site:rrbcdg.gov.in) ("Junior Engineer" OR "Assistant Engineer" OR "Polytechnic Lecturer" OR "SSC JE" OR "RRB JE" OR "JDLCCE") ("Admit Card" OR "Hall Ticket" OR "Call Letter" OR "City Intimation")'
     }
 ]
 
@@ -381,7 +422,7 @@ def run_private_mnc_jobs():
             print(f"Private Job Scrape Warning ({item['role']}): {e}")
 
 if __name__ == "__main__":
-    print("🚀 Starting Master Civil Job & Admit Card Radar...")
+    print("🚀 Starting 4-Section Master Civil Job, Exam Date & Admit Card Radar...")
     run_direct_scrapers()
     run_verified_feeds()
     run_private_mnc_jobs()
