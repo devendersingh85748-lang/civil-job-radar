@@ -3,44 +3,44 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Civil Engg Master Job Portal (Diploma | B.Tech | M.Tech)</title>
+  <title>Civil Engg Job Radar — Structured Cards</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen p-4 md:p-8">
-  <div class="max-w-5xl mx-auto">
+  <div class="max-w-6xl mx-auto">
     <!-- Header -->
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b border-slate-800 pb-4">
       <div>
-        <h1 class="text-2xl md:text-3xl font-bold text-emerald-400">🏗️ Civil Engineering Verified Job Radar</h1>
-        <p class="text-sm text-slate-400 mt-1">Live Automated Feed • Central/State Govt (JE/AE/Lecturer) • PSUs • Top Design & EPC MNCs</p>
+        <h1 class="text-2xl md:text-3xl font-extrabold text-emerald-400 tracking-tight">🏗️ CIVIL ENGG VERIFIED JOB RADAR</h1>
+        <p class="text-sm text-slate-400 mt-1">Role-Wise Structured Cards • Highlighted Qualifications (Diploma | B.Tech | M.Tech)</p>
       </div>
-      <span id="job-count" class="mt-3 md:mt-0 bg-emerald-950 border border-emerald-700 text-emerald-300 text-xs font-semibold px-3 py-1.5 rounded-full">
-        Loading jobs...
+      <span id="job-count" class="mt-3 md:mt-0 bg-emerald-950 border border-emerald-700 text-emerald-300 text-xs font-bold px-3.5 py-1.5 rounded-full">
+        Loading...
       </span>
     </div>
 
-    <!-- Search & Qualification Filters -->
+    <!-- Search & Sector Filter -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-      <input id="search-input" type="text" oninput="renderJobs()" placeholder="Search JSSC, SSC, Lecturer, Structural, L&T, Gurugram..." 
-        class="md:col-span-2 bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500">
+      <input id="search-input" type="text" oninput="renderJobs()" placeholder="🔍 Search JE, AE, Lecturer, JSSC, SSC, L&T, Structural, Gurugram..." 
+        class="md:col-span-2 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500">
       
-      <select id="sector-filter" onchange="renderJobs()" class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500">
+      <select id="sector-filter" onchange="renderJobs()" class="bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500">
         <option value="ALL">🏛️🏢 All Sectors (Govt + Private)</option>
         <option value="GOVT">🏛️ Only Govt / PSU / Academic</option>
         <option value="PRIVATE">🏢 Only Private MNCs (Design / Site)</option>
       </select>
     </div>
 
-    <!-- Qualification Tabs -->
-    <div class="flex flex-wrap gap-2 mb-6">
-      <button onclick="setCategory('ALL')" id="tab-ALL" class="tab-btn bg-emerald-600 text-white text-xs md:text-sm font-medium px-4 py-2 rounded-lg">All Qualifications</button>
-      <button onclick="setCategory('Diploma')" id="tab-Diploma" class="tab-btn bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs md:text-sm font-medium px-4 py-2 rounded-lg">🎓 Diploma (JE / Supervisor)</button>
-      <button onclick="setCategory('B.Tech')" id="tab-B.Tech" class="tab-btn bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs md:text-sm font-medium px-4 py-2 rounded-lg">🎓 B.Tech (AE / PSU / Site & Billing)</button>
-      <button onclick="setCategory('M.Tech')" id="tab-M.Tech" class="tab-btn bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs md:text-sm font-medium px-4 py-2 rounded-lg">🎓 M.Tech (Lecturer / Structural / Scientist)</button>
+    <!-- Qualification Filter Tabs -->
+    <div class="flex flex-wrap gap-2 mb-8">
+      <button onclick="setCategory('ALL')" id="tab-ALL" class="tab-btn bg-emerald-600 text-white text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl">📋 All Cards</button>
+      <button onclick="setCategory('D')" id="tab-D" class="tab-btn bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl">👷 Diploma (JE / Technical)</button>
+      <button onclick="setCategory('B')" id="tab-B" class="tab-btn bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl">🏛️ B.Tech (AE / PSU / Site)</button>
+      <button onclick="setCategory('M')" id="tab-M" class="tab-btn bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl">🎓 M.Tech (Lecturer / Design / Scientist)</button>
     </div>
 
-    <!-- Jobs List -->
-    <div id="jobs-container" class="space-y-3"></div>
+    <!-- Cards Grid -->
+    <div id="jobs-container" class="grid grid-cols-1 md:grid-cols-2 gap-5"></div>
   </div>
 
   <script>
@@ -48,32 +48,52 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_LdGBnlTBOeTRo9bpxnAZ8Q_y67l0BVy';
 
     let allJobs = [];
-    let activeCategory = 'ALL';
+    let activeQual = 'ALL';
+
+    function parseJobMeta(job) {
+      const parts = (job.category || '').split('|');
+      if (parts.length >= 5) {
+        return {
+          shortCat: parts[0],
+          header: parts[1],
+          quals: parts[2],
+          startDate: parts[3],
+          endDate: parts[4]
+        };
+      }
+      // Fallback for older rows
+      const c = job.category || '';
+      const d = c.includes('Diploma') ? 'D' : '';
+      const b = c.includes('B.Tech') || c.includes('Diploma') ? 'B' : '';
+      const m = c.includes('M.Tech') ? 'BM' : '';
+      return {
+        shortCat: c,
+        header: c.includes('Diploma') ? '🟨 【 👷 JUNIOR ENGINEER (JE) / DIPLOMA 】' :
+                c.includes('M.Tech') ? '🟪 【 🎓 LECTURER / SPECIALIST DESIGN 】' :
+                '🟦 【 🏛️ ASSISTANT ENGINEER (AE) / EXECUTIVE 】',
+        quals: (d + b + m) || 'B',
+        startDate: new Date(job.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+        endDate: 'Refer Official PDF'
+      };
+    }
 
     async function fetchJobs() {
-      try {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/civil_jobs?select=*&order=created_at.desc&limit=300`, {
-          headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-          }
-        });
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          allJobs = data;
-          renderJobs();
-        }
-      } catch (err) {
-        console.error('Error loading jobs:', err);
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/civil_jobs?select=*&order=created_at.desc&limit=300`, {
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
+      });
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        allJobs = data.map(j => ({ ...j, meta: parseJobMeta(j) }));
+        renderJobs();
       }
     }
 
-    function setCategory(cat) {
-      activeCategory = cat;
+    function setCategory(q) {
+      activeQual = q;
       document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.className = 'tab-btn bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs md:text-sm font-medium px-4 py-2 rounded-lg';
+        btn.className = 'tab-btn bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl';
       });
-      document.getElementById('tab-' + cat).className = 'tab-btn bg-emerald-600 text-white text-xs md:text-sm font-medium px-4 py-2 rounded-lg';
+      document.getElementById('tab-' + q).className = 'tab-btn bg-emerald-600 text-white text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl';
       renderJobs();
     }
 
@@ -82,37 +102,71 @@
       const sector = document.getElementById('sector-filter').value;
 
       const filtered = allJobs.filter(job => {
-        const matchesCat = activeCategory === 'ALL' || job.category.includes(activeCategory);
-        const matchesSearch = job.title.toLowerCase().includes(search) || job.source.toLowerCase().includes(search);
-        const isPrivate = job.source.includes('Private') || job.source.includes('MNC') || job.source.includes('EPC');
+        const matchesQual = activeQual === 'ALL' || job.meta.quals.includes(activeQual);
+        const matchesSearch = job.title.toLowerCase().includes(search) || job.source.toLowerCase().includes(search) || job.meta.header.toLowerCase().includes(search);
+        const isPrivate = job.source.toLowerCase().includes('private') || job.source.toLowerCase().includes('mnc') || job.source.toLowerCase().includes('epc');
         const matchesSector = sector === 'ALL' || (sector === 'PRIVATE' && isPrivate) || (sector === 'GOVT' && !isPrivate);
-        return matchesCat && matchesSearch && matchesSector;
+        return matchesQual && matchesSearch && matchesSector;
       });
 
-      document.getElementById('job-count').innerText = `${filtered.length} Verified Jobs Found`;
+      document.getElementById('job-count').innerText = `${filtered.length} Active Job Cards`;
 
       const container = document.getElementById('jobs-container');
-      if (filtered.length === 0) {
-        container.innerHTML = `<div class="bg-slate-900 border border-slate-800 p-8 rounded-lg text-center text-slate-400">No jobs matching current filter yet. Run the GitHub Action once to populate live jobs!</div>`;
-        return;
-      }
-
       container.innerHTML = filtered.map(job => {
-        const dateStr = new Date(job.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+        const hasD = job.meta.quals.includes('D');
+        const hasB = job.meta.quals.includes('B');
+        const hasM = job.meta.quals.includes('M');
+
         return `
-          <div class="bg-slate-900 hover:bg-slate-800/80 transition p-4 rounded-xl border border-slate-800 flex flex-col md:flex-row justify-between md:items-center gap-4">
-            <div class="space-y-1.5">
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="text-xs font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800 px-2.5 py-0.5 rounded">${job.category}</span>
-                <span class="text-xs font-medium bg-blue-950 text-blue-300 border border-blue-800 px-2.5 py-0.5 rounded">${job.source}</span>
-                <span class="text-xs text-slate-400">📅 ${dateStr}</span>
+          <div class="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-lg flex flex-col justify-between">
+            <div>
+              <!-- Card Header Banner -->
+              <div class="bg-slate-800/90 border-b border-slate-700 px-4 py-2.5 flex justify-between items-center">
+                <span class="text-xs md:text-sm font-extrabold tracking-wide text-white">${job.meta.header}</span>
+                <span class="text-[11px] font-semibold bg-slate-950 text-emerald-400 border border-slate-700 px-2.5 py-0.5 rounded-md">${job.source}</span>
               </div>
-              <h2 class="text-base md:text-lg font-semibold text-slate-100">${job.title}</h2>
+
+              <!-- Body -->
+              <div class="p-4 space-y-4">
+                <h2 class="text-base md:text-lg font-bold text-slate-100 leading-snug">📌 ${job.title}</h2>
+
+                <!-- Qualification Highlight Pills -->
+                <div>
+                  <p class="text-[11px] uppercase tracking-wider text-slate-400 font-bold mb-1.5">🎓 Eligible Qualifications:</p>
+                  <div class="grid grid-cols-3 gap-2">
+                    <div class="text-center py-1.5 rounded-lg text-xs font-extrabold border ${hasD ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-sm' : 'bg-slate-950/40 border-slate-800 text-slate-600'}">
+                      ${hasD ? '✅ DIPLOMA' : '⬜ Diploma'}
+                    </div>
+                    <div class="text-center py-1.5 rounded-lg text-xs font-extrabold border ${hasB ? 'bg-blue-500/20 border-blue-400 text-blue-300 shadow-sm' : 'bg-slate-950/40 border-slate-800 text-slate-600'}">
+                      ${hasB ? '✅ B.TECH' : '⬜ B.Tech'}
+                    </div>
+                    <div class="text-center py-1.5 rounded-lg text-xs font-extrabold border ${hasM ? 'bg-purple-500/20 border-purple-400 text-purple-300 shadow-sm' : 'bg-slate-950/40 border-slate-800 text-slate-600'}">
+                      ${hasM ? '✅ M.TECH' : '⬜ M.Tech'}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Start Date & End Date Box -->
+                <div class="grid grid-cols-2 gap-2 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 text-xs">
+                  <div>
+                    <span class="text-slate-400 block text-[11px]">🟢 Start / Posted Date</span>
+                    <span class="font-bold text-emerald-400">${job.meta.startDate}</span>
+                  </div>
+                  <div class="border-l border-slate-800 pl-3">
+                    <span class="text-slate-400 block text-[11px]">🔴 Last Date (End)</span>
+                    <span class="font-bold text-rose-400">${job.meta.endDate}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <a href="${job.link}" target="_blank" rel="noopener noreferrer" 
-               class="shrink-0 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs md:text-sm px-4 py-2.5 rounded-lg text-center">
-              Official Notice / Apply ↗
-            </a>
+
+            <!-- Card Footer Button -->
+            <div class="p-3 bg-slate-950/50 border-t border-slate-800/80">
+              <a href="${job.link}" target="_blank" rel="noopener noreferrer" 
+                 class="block w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs md:text-sm py-2.5 rounded-xl text-center transition">
+                📄 View Official Notification / Apply Now ↗
+              </a>
+            </div>
           </div>
         `;
       }).join('');
