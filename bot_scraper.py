@@ -26,91 +26,121 @@ SUPABASE_HEADERS = {
     "Prefer": "return=minimal"
 }
 
-EXCLUDE_WORDS = [
-    "staff nurse", "nursing", "medical officer", "pharmacist", "constable",
-    "stenographer", "typist", "anatomist", "ayurvedic", "homeopathic",
-    "veterinary", "driver", "peon", "sweeper", "tgt arts", "pgt hindi"
+# ==========================================
+# 1. STRICT ANTI-JUNK & NON-CIVIL BLOCKER
+# ==========================================
+BLOCK_LIST = [
+    # False "Civil" matches
+    "civil services", "civil service", "civil judge", "civil court", "civil surgeon", "civil defence",
+    # Non-recruitment website junk, old acts, results, admit cards
+    "unfair means", "act, 20", "jharkhand act", "press release", "admit card", "hall ticket",
+    "answer key", "result", "merit list", "rejection list", "interview", "document verification",
+    "corrigendum", "syllabus", "calendar", "recent examination", "archive", "tender", "quotation",
+    "debar", "important instruction", "cutoff", "cut-off", "score card", "marks", "allotment",
+    # Non-civil jobs
+    "staff nurse", "nursing", "medical officer", "pharmacist", "constable", "stenographer",
+    "typist", "ayurvedic", "homeopathic", "veterinary", "driver", "peon", "tgt ", "pgt ",
+    # Old years blocker
+    "2019", "2020", "2021", "2022", "2023", "2024", "2025",
+    "-01-2026", "-02-2026", "-03-2026", "-04-2026", "-05-2026", "-06-2026", "-07-2026"
 ]
 
+def has_word(text: str, phrases: list) -> bool:
+    for p in phrases:
+        # Strict word-boundary match so "amin" NEVER matches "examination"
+        if re.search(r'\b' + re.escape(p) + r'\b', text):
+            return True
+    return False
+
 # ==========================================
-# 1. SMART ROLE HEADER, QUALIFICATION & DATE EXTRACTOR
+# 2. STRICT NEW EXAM / VACANCY CLASSIFIER
 # ==========================================
 def analyze_job_card(title: str, source: str):
-    t = title.lower()
-    if any(bad in t for bad in EXCLUDE_WORDS):
+    t = title.lower().strip()
+
+    # Too short (menu links like "Recent Examinations/Interview") or in BLOCK_LIST -> Reject!
+    if len(t) < 18 or any(bad in t for bad in BLOCK_LIST):
         return None
 
     is_private = any(x in source.lower() for x in ["private", "mnc", "epc"])
 
-    # Default qualification flags
+    # Govt notices MUST indicate a new recruitment/vacancy/exam notification
+    if not is_private:
+        recruitment_signals = [
+            "recruitment", "advt", "advertisement", "vacancy", "vacancies",
+            "notification", "apply online", "online application", "jdlcce",
+            "ssc je", "rrb je", "employment notice", "walk-in", "engagement of"
+        ]
+        if not any(sig in t for sig in recruitment_signals):
+            return None
+
     dip, btech, mtech = False, False, False
     header = ""
     short_cat = ""
 
-    # 1. Check M.Tech / Lecturer / Scientist / Specialist Design
-    if any(k in t for k in [
-        "lecturer", "polytechnic", "assistant professor", "faculty", "scientist",
-        "structural", "geotechnical", "transportation", "water resources",
-        "bridge design", "m.tech", "mtech", "research associate", "srf", "jrf", "bim"
-    ]):
-        mtech = True
-        btech = True
-        if "lecturer" in t or "professor" in t or "faculty" in t or "polytechnic" in t:
+    # 1. M.Tech / Lecturer / Scientist / Design Roles
+    mtech_roles = [
+        "polytechnic lecturer", "lecturer in civil", "assistant professor", "faculty",
+        "scientist", "project scientist", "structural engineer", "structural design",
+        "geotechnical engineer", "bridge design", "transportation engineer",
+        "water resources", "bim engineer", "bim modeler", "research associate", "srf", "jrf"
+    ]
+    # 2. Diploma / JE Roles
+    je_roles = [
+        "junior engineer", "je civil", "je (civil)", "jdlcce", "ssc je", "rrb je",
+        "diploma trainee", "diploma engineer", "site supervisor", "draughtsman civil", "overseer"
+    ]
+    # 3. B.Tech / AE / PSU / Site & Billing Roles
+    ae_btech_roles = [
+        "assistant engineer", "ae civil", "ae (civil)", "sub divisional officer",
+        "executive engineer", "executive trainee", "graduate engineer trainee",
+        "site engineer", "billing engineer", "planning engineer", "quantity surveyor",
+        "highway engineer", "qa/qc engineer", "project engineer", "contracts engineer",
+        "civil engineer", "civil engineering"
+    ]
+
+    if has_word(t, mtech_roles):
+        mtech, btech = True, True
+        if any(w in t for w in ["lecturer", "professor", "faculty", "polytechnic"]):
             header = "🟪 【 🎓 LECTURER / ACADEMIC FACULTY 】"
-        elif "scientist" in t or "srf" in t or "jrf" in t or "research" in t:
+        elif any(w in t for w in ["scientist", "srf", "jrf", "research"]):
             header = "🟪 【 🔬 SCIENTIST / R&D PROJECT 】"
         else:
             header = "🟪 【 📐 M.TECH SPECIALIST / DESIGN 】"
         short_cat = "M.Tech"
 
-    # 2. Check Diploma / JE Level
-    elif any(k in t for k in [
-        "junior engineer", "je ", "j.e.", "jdlcce", "ssc je", "rrb je",
-        "diploma", "det ", "overseer", "surveyor", "draughtsman",
-        "site supervisor", "technical assistant", "work inspector", "amin"
-    ]):
-        dip = True
-        btech = True  # B.Tech is also eligible in SSC JE, RRB JE, JSSC JE, etc.
+    elif has_word(t, je_roles):
+        dip, btech = True, True
         header = "🟨 【 👷 JUNIOR ENGINEER (JE) / DIPLOMA 】"
         short_cat = "Diploma"
 
-    # 3. Check B.Tech / AE / PSU / Site & Billing
-    elif any(k in t for k in [
-        "assistant engineer", "ae ", "a.e.", "sdo", "executive engineer",
-        "graduate engineer", "get ", "management trainee", "executive trainee",
-        "gate ", "site engineer", "billing", "planning", "quantity surveyor",
-        "qa/qc", "highway", "resident engineer", "project engineer", "contracts", "civil"
-    ]):
+    elif has_word(t, ae_btech_roles):
         btech = True
-        if any(x in t for x in ["assistant engineer", "ae ", "a.e.", "sdo", "executive", "gate ", "psu"]):
+        if any(w in t for w in ["assistant engineer", "ae civil", "ae (civil)", "executive trainee", "sub divisional"]):
             header = "🟦 【 🏛️ ASSISTANT ENGINEER (AE) / PSU 】"
             mtech = True
-        elif is_private or any(x in t for x in ["site", "billing", "planning", "qa/qc", "qs"]):
+        elif is_private or any(w in t for w in ["site engineer", "billing", "planning", "quantity surveyor", "qa/qc"]):
             header = "🟧 【 🏗️ MNC SITE / BILLING / PLANNING 】"
             dip = True
         else:
             header = "🟦 【 🏛️ B.TECH CIVIL RECRUITMENT 】"
         short_cat = "B.Tech"
-
     else:
         return None
 
-    # Extract dates if mentioned in title/notice text
+    # Date extraction
     date_pattern = r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})'
     found_dates = re.findall(date_pattern, title, re.IGNORECASE)
 
     today_str = datetime.now().strftime("%d %b %Y")
     start_date = found_dates[0] if len(found_dates) >= 2 else today_str
-    end_date = found_dates[-1] if len(found_dates) >= 1 else "Refer Official PDF"
+    end_date = found_dates[-1] if len(found_dates) >= 1 else "Check Official PDF"
 
-    # Build visual badge string
     d_badge = "✅ <b>DIPLOMA</b>" if dip else "⬜ Diploma"
     b_badge = "✅ <b>B.TECH</b>" if btech else "⬜ B.Tech"
     m_badge = "✅ <b>M.TECH</b>" if mtech else "⬜ M.Tech"
 
     qual_code = f"{'D' if dip else ''}{'B' if btech else ''}{'M' if mtech else ''}"
-
-    # Pack metadata into category column so Supabase needs zero schema changes
     packed_category = f"{short_cat}|{header}|{qual_code}|{start_date}|{end_date}"
 
     return {
@@ -125,7 +155,7 @@ def analyze_job_card(title: str, source: str):
     }
 
 # ==========================================
-# 2. TELEGRAM RICH CARD SENDER (HTML + BUTTON)
+# 3. TELEGRAM RICH CARD SENDER
 # ==========================================
 def send_telegram_card(title, source, link, info):
     if not TELEGRAM_TOKEN:
@@ -137,12 +167,12 @@ def send_telegram_card(title, source, link, info):
     card_text = (
         f"<b>{info['header']}</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"📌 <b>Post:</b> {safe_title}\n"
-        f"🏢 <b>Dept/Org:</b> <code>{safe_source}</code> ({info['sector']})\n\n"
+        f"📌 <b>Notification:</b> {safe_title}\n"
+        f"🏢 <b>Organization:</b> <code>{safe_source}</code> ({info['sector']})\n\n"
         f"🎓 <b>ELIGIBILITY HIGHLIGHT:</b>\n"
         f"{info['d_badge']}  |  {info['b_badge']}  |  {info['m_badge']}\n\n"
         f"📅 <b>IMPORTANT DATES:</b>\n"
-        f"🟢 <b>Start / Posted:</b> {info['start_date']}\n"
+        f"🟢 <b>Notification Date:</b> {info['start_date']}\n"
         f"🔴 <b>Last Date:</b> {info['end_date']}\n"
         f"━━━━━━━━━━━━━━━━━━━━"
     )
@@ -155,7 +185,7 @@ def send_telegram_card(title, source, link, info):
         "disable_web_page_preview": True,
         "reply_markup": {
             "inline_keyboard": [[
-                {"text": "📄 Official Notification / Apply Now ↗", "url": link}
+                {"text": "📄 View Official Notification / Apply ↗", "url": link}
             ]]
         }
     }
@@ -166,7 +196,7 @@ def send_telegram_card(title, source, link, info):
         print(f"Telegram Error: {e}")
 
 def process_item(title, source, link):
-    if not title or not link or len(title.strip()) < 8:
+    if not title or not link:
         return
     title = " ".join(title.split())
     info = analyze_job_card(title, source)
@@ -194,30 +224,26 @@ def process_item(title, source, link):
                 timeout=10
             )
             if ins.status_code in [200, 201, 204]:
-                print(f"[NEW CARD] {info['header']} -> {title}")
+                print(f"[NEW VERIFIED JOB] {info['header']} -> {title}")
                 send_telegram_card(title, source, link, info)
     except Exception as e:
         print(f"Database Warning: {e}")
 
 # ==========================================
-# 3. SCRAPERS (GOVT + PSU + R&D + MNC)
+# 4. OFFICIAL GOVT & MNC SCRAPERS
 # ==========================================
 DIRECT_PORTALS = [
     {"name": "JSSC Jharkhand", "url": "https://jssc.jharkhand.gov.in/notices", "base": "https://jssc.jharkhand.gov.in"},
     {"name": "JPSC Jharkhand", "url": "https://www.jpsc.gov.in/exam_files.php", "base": "https://www.jpsc.gov.in/"},
-    {"name": "BPSC Bihar", "url": "https://www.bpsc.bih.nic.in/", "base": "https://www.bpsc.bih.nic.in/"},
     {"name": "BTSC Bihar (JE/AE)", "url": "https://btsc.bihar.gov.in/latest-update", "base": "https://btsc.bihar.gov.in"},
     {"name": "UPPSC UP", "url": "https://uppsc.up.nic.in/CandidatePages/Notifications.aspx", "base": "https://uppsc.up.nic.in"},
-    {"name": "WBPSC West Bengal", "url": "https://psc.wb.gov.in/all_announcement.jsp", "base": "https://psc.wb.gov.in/"},
     {"name": "DSSSB Delhi", "url": "https://dsssb.delhi.gov.in/vacancy-advertisements", "base": "https://dsssb.delhi.gov.in"},
     {"name": "DMRC Delhi Metro", "url": "https://www.delhimetrorail.com/pages/en/career", "base": "https://www.delhimetrorail.com"},
     {"name": "NCRTC (RRTS Metro)", "url": "https://ncrtc.in/jobs/", "base": "https://ncrtc.in"},
     {"name": "DFCCIL Railways", "url": "https://dfccil.com/Home/AllActiveCareer", "base": "https://dfccil.com"},
     {"name": "RITES Ltd", "url": "https://www.rites.com/Career", "base": "https://www.rites.com/"},
-    {"name": "IRCON International", "url": "https://www.ircon.org/index.php?lang=en", "base": "https://www.ircon.org/"},
     {"name": "CSIR-CBRI Roorkee", "url": "https://cbri.res.in/careers/", "base": "https://cbri.res.in"},
-    {"name": "CSIR-CRRI Delhi", "url": "https://crridom.gov.in/recruitment", "base": "https://crridom.gov.in"},
-    {"name": "NIH Roorkee (Hydrology)", "url": "https://nihroorkee.gov.in/career-opportunities", "base": "https://nihroorkee.gov.in"}
+    {"name": "CSIR-CRRI Delhi", "url": "https://crridom.gov.in/recruitment", "base": "https://crridom.gov.in"}
 ]
 
 def run_direct_scrapers():
@@ -238,27 +264,15 @@ def run_direct_scrapers():
 VERIFIED_SEARCH_FEEDS = [
     {
         "source": "Central Govt (SSC / RRB / UPSC / NHAI)",
-        "query": '(site:ssc.gov.in OR site:indianrailways.gov.in OR site:upsc.gov.in OR site:nhai.gov.in OR site:nbccindia.in) ("Junior Engineer" OR "Assistant Engineer" OR "Civil" OR "Recruitment" OR "JE")'
+        "query": '(site:ssc.gov.in OR site:indianrailways.gov.in OR site:upsc.gov.in OR site:nhai.gov.in OR site:nbccindia.in) ("Junior Engineer" OR "Assistant Engineer" OR "Civil Engineer") ("Recruitment" OR "Advt" OR "Vacancy")'
     },
     {
-        "source": "State Govt (JE / AE / Lecturer)",
-        "query": '(site:jssc.jharkhand.gov.in OR site:jpsc.gov.in OR site:bpsc.bih.nic.in OR site:uppsc.up.nic.in OR site:upsssc.gov.in OR site:hpsc.gov.in OR site:hssc.gov.in) ("Civil" OR "Junior Engineer" OR "Assistant Engineer" OR "Lecturer" OR "Polytechnic")'
+        "source": "State Govt (JE / AE / Polytechnic Lecturer)",
+        "query": '(site:jssc.jharkhand.gov.in OR site:jpsc.gov.in OR site:bpsc.bih.nic.in OR site:uppsc.up.nic.in OR site:upsssc.gov.in OR site:hpsc.gov.in) ("Junior Engineer" OR "Assistant Engineer" OR "Polytechnic Lecturer") ("Recruitment" OR "Advt" OR "Vacancy")'
     },
     {
         "source": "PSU Civil Recruitment",
-        "query": '(site:careers.ntpc.co.in OR site:powergrid.in OR site:iocl.com OR site:rvnl.org OR site:nhpcindia.com OR site:thdc.co.in OR site:npcilcareers.co.in) ("Civil" OR "Executive Trainee" OR "Diploma Trainee" OR "Assistant Engineer")'
-    },
-    {
-        "source": "Academic & Research (M.Tech / B.Tech)",
-        "query": '(site:ac.in OR site:res.in OR site:aicte-india.org) ("Civil Engineering" OR "Structural" OR "Geotechnical") ("Lecturer" OR "Assistant Professor" OR "Scientist" OR "Project Associate" OR "Guest Faculty")'
-    },
-    {
-        "source": "Private EPC Giant (L&T / Tata / Afcons / Shapoorji)",
-        "query": '("L&T Construction" OR "Larsen & Toubro" OR "Tata Projects" OR "Afcons" OR "Shapoorji Pallonji" OR "KEC International" OR "NCC Limited" OR "HG Infra") ("Civil Engineer" OR "Site Engineer" OR "Billing Engineer" OR "Planning Engineer" OR "Structural Engineer" OR "GET" OR "MT")'
-    },
-    {
-        "source": "Global Design MNC (WSP / AECOM / Atkins / Jacobs / Systra)",
-        "query": '("AECOM" OR "WSP" OR "AtkinsRealis" OR "Jacobs" OR "Mott MacDonald" OR "Ramboll" OR "Arup" OR "Systra" OR "Egis" OR "SMEC" OR "STUP Consultants") ("Structural Engineer" OR "Bridge Engineer" OR "Geotechnical" OR "Civil Engineer" OR "Highway" OR "Water Resources" OR "BIM") ("India" OR "Gurugram" OR "Noida" OR "Delhi" OR "Kolkata" OR "Mumbai" OR "Bengaluru" OR "Hyderabad")'
+        "query": '(site:careers.ntpc.co.in OR site:powergrid.in OR site:iocl.com OR site:rvnl.org OR site:nhpcindia.com OR site:thdc.co.in) ("Civil Engineer" OR "Executive Trainee" OR "Diploma Trainee" OR "Assistant Engineer") ("Recruitment" OR "Advt")'
     }
 ]
 
@@ -269,7 +283,7 @@ def run_verified_feeds():
             rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
             r = requests.get(rss_url, headers=HEADERS, timeout=15)
             root = ET.fromstring(r.content)
-            for item in root.findall(".//item")[:15]:
+            for item in root.findall(".//item")[:10]:
                 title = item.find("title").text
                 link = item.find("link").text
                 process_item(title, feed["source"], link)
@@ -277,12 +291,12 @@ def run_verified_feeds():
             print(f"Feed Warning ({feed['source']}): {e}")
 
 PRIVATE_ROLES = [
-    {"role": "Civil Structural Engineer", "loc": "India"},
+    {"role": "Civil Structural Design Engineer", "loc": "India"},
     {"role": "Civil Billing Planning Engineer", "loc": "India"},
     {"role": "Civil Site Engineer", "loc": "Gurugram"},
     {"role": "Bridge Highway Design Engineer", "loc": "India"},
-    {"role": "Geotechnical Water Resources Engineer", "loc": "India"},
-    {"role": "Civil Engineering Lecturer Faculty", "loc": "India"}
+    {"role": "Geotechnical Engineer", "loc": "India"},
+    {"role": "Civil Engineering Lecturer", "loc": "India"}
 ]
 
 def run_private_mnc_jobs():
@@ -296,7 +310,7 @@ def run_private_mnc_jobs():
             )
             r = requests.get(url, headers=HEADERS, timeout=15)
             soup = BeautifulSoup(r.text, "html.parser")
-            for card in soup.find_all("div", class_="base-card")[:8]:
+            for card in soup.find_all("div", class_="base-card")[:6]:
                 title_el = card.find("h3", class_="base-search-card__title")
                 company_el = card.find("h4", class_="base-search-card__subtitle")
                 loc_el = card.find("span", class_="job-search-card__location")
@@ -309,12 +323,12 @@ def run_private_mnc_jobs():
                     clean_link = link_el["href"].split("?")[0]
 
                     full_title = f"{job_title} — {company} ({location})"
-                    process_item(full_title, f"Private Direct ({company})", clean_link)
+                    process_item(full_title, f"Private MNC ({company})", clean_link)
         except Exception as e:
             print(f"Private Job Scrape Warning ({item['role']}): {e}")
 
 if __name__ == "__main__":
-    print("🚀 Starting Structured Card Civil Job Radar...")
+    print("🚀 Starting Strict New-Exam Civil Job Radar...")
     run_direct_scrapers()
     run_verified_feeds()
     run_private_mnc_jobs()
