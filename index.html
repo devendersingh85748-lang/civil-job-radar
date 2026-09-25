@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Civil Engg Master Radar — Jobs, Admit Cards & Closed Tracker</title>
+  <title>Civil Engg Master Radar — Jobs, Exam Dates, Admit Cards & Closed Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen p-4 md:p-8">
@@ -12,35 +12,40 @@
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b border-slate-800 pb-4">
       <div>
         <h1 class="text-2xl md:text-3xl font-extrabold text-emerald-400 tracking-tight">🏗️ CIVIL ENGG VERIFIED JOB RADAR</h1>
-        <p class="text-sm text-slate-400 mt-1">100% Genuine Live Vacancies • Admit Card Radar • 30-Day Closed Tracker (Diploma | B.Tech | M.Tech)</p>
+        <p class="text-sm text-slate-400 mt-1">100% Genuine Live Vacancies • Upcoming Exam Dates • Admit Card Radar • 30-Day Closed Tracker</p>
       </div>
       <span id="job-count" class="mt-3 md:mt-0 bg-emerald-950 border border-emerald-700 text-emerald-300 text-xs font-bold px-3.5 py-1.5 rounded-full">
         Loading...
       </span>
     </div>
 
-    <!-- MAIN 3-SECTION SWITCH: ACTIVE vs ADMIT CARDS vs CLOSED -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 mb-6 bg-slate-900 p-1.5 rounded-2xl border border-slate-800">
+    <!-- MAIN 4-SECTION SWITCH: ACTIVE vs EXAM DATES vs ADMIT CARDS vs CLOSED -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6 bg-slate-900 p-1.5 rounded-2xl border border-slate-800">
       <button onclick="setStatusTab('ACTIVE')" id="status-ACTIVE" 
-        class="py-3 px-4 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-2 bg-emerald-600 text-white shadow-lg">
-        <span>🟢 Active Vacancies</span>
+        class="py-3 px-3 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-1.5 bg-emerald-600 text-white shadow-lg">
+        <span>🟢 Active Jobs</span>
         <span id="count-active" class="bg-black/30 px-2 py-0.5 rounded-full text-xs">0</span>
       </button>
+      <button onclick="setStatusTab('EXAM_DATE')" id="status-EXAM_DATE" 
+        class="py-3 px-3 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-1.5 text-slate-400 hover:text-white">
+        <span>📅 Upcoming Exams</span>
+        <span id="count-exam" class="bg-slate-800 px-2 py-0.5 rounded-full text-xs">0</span>
+      </button>
       <button onclick="setStatusTab('ADMIT')" id="status-ADMIT" 
-        class="py-3 px-4 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-2 text-slate-400 hover:text-white">
-        <span>🎫 Admit Cards & Exam Dates</span>
+        class="py-3 px-3 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-1.5 text-slate-400 hover:text-white">
+        <span>🎫 Admit Cards</span>
         <span id="count-admit" class="bg-slate-800 px-2 py-0.5 rounded-full text-xs">0</span>
       </button>
       <button onclick="setStatusTab('CLOSED')" id="status-CLOSED" 
-        class="py-3 px-4 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-2 text-slate-400 hover:text-white">
-        <span>🔴 Closed (Last 1 Month)</span>
+        class="py-3 px-3 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-1.5 text-slate-400 hover:text-white">
+        <span>🔴 Closed (1M)</span>
         <span id="count-closed" class="bg-slate-800 px-2 py-0.5 rounded-full text-xs">0</span>
       </button>
     </div>
 
     <!-- Search & Sector Filter -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-      <input id="search-input" type="text" oninput="renderJobs()" placeholder="🔍 Search JE, AE, Lecturer, Admit Card, JSSC, SSC, RRB, L&T..." 
+      <input id="search-input" type="text" oninput="renderJobs()" placeholder="🔍 Search JE, AE, Lecturer, Exam Date, Admit Card, JSSC, SSC, RRB, L&T..." 
         class="md:col-span-2 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500">
       
       <select id="sector-filter" onchange="renderJobs()" class="bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500">
@@ -68,10 +73,10 @@
 
     let allJobs = [];
     let activeQual = 'ALL';
-    let activeStatusTab = 'ACTIVE'; // 'ACTIVE', 'ADMIT', 'CLOSED'
+    let activeStatusTab = 'ACTIVE'; // 'ACTIVE', 'EXAM_DATE', 'ADMIT', 'CLOSED'
 
     function parseDateString(dateStr) {
-      if (!dateStr || dateStr.includes('PDF') || dateStr.includes('Check') || dateStr.includes('Notice')) return null;
+      if (!dateStr || dateStr.includes('PDF') || dateStr.includes('Check') || dateStr.includes('Notice') || dateStr.includes('Portal')) return null;
       const dmy = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
       if (dmy) {
         return new Date(parseInt(dmy[3]), parseInt(dmy[2]) - 1, parseInt(dmy[1]), 23, 59, 59);
@@ -100,11 +105,20 @@
         startDate = new Date(job.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
       }
 
-      // Check if it's an Admit Card / Exam Date item
-      if (shortCat === 'ADMIT_CARD' || header.includes('ADMIT CARD')) {
-        return { shortCat, header, quals, startDate, endDate, status: 'ADMIT', daysLeft: null };
+      const tLower = (job.title || '').toLowerCase();
+
+      // 1. Check if it's an Upcoming Exam Date / Schedule item
+      if (shortCat === 'EXAM_DATE' || header.includes('UPCOMING EXAM DATE') || 
+         (shortCat === 'ADMIT_CARD' && (tLower.includes('exam date') || tLower.includes('schedule')) && !tLower.includes('admit card'))) {
+        return { shortCat: 'EXAM_DATE', header, quals, startDate, endDate, status: 'EXAM_DATE', daysLeft: null };
       }
 
+      // 2. Check if it's an Admit Card / Hall Ticket item
+      if (shortCat === 'ADMIT_CARD' || header.includes('ADMIT CARD')) {
+        return { shortCat: 'ADMIT_CARD', header, quals, startDate, endDate, status: 'ADMIT', daysLeft: null };
+      }
+
+      // 3. Otherwise Active vs Closed Vacancy
       const now = new Date();
       const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
       const endObj = parseDateString(endDate);
@@ -138,18 +152,22 @@
 
     function setStatusTab(tab) {
       activeStatusTab = tab;
-      const baseClass = 'py-3 px-4 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-2 text-slate-400 hover:text-white';
+      const baseClass = 'py-3 px-3 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-1.5 text-slate-400 hover:text-white';
       
       document.getElementById('status-ACTIVE').className = tab === 'ACTIVE'
-        ? 'py-3 px-4 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-2 bg-emerald-600 text-white shadow-lg'
+        ? 'py-3 px-3 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-1.5 bg-emerald-600 text-white shadow-lg'
+        : baseClass;
+
+      document.getElementById('status-EXAM_DATE').className = tab === 'EXAM_DATE'
+        ? 'py-3 px-3 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-1.5 bg-amber-600 text-white shadow-lg'
         : baseClass;
 
       document.getElementById('status-ADMIT').className = tab === 'ADMIT'
-        ? 'py-3 px-4 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-2 bg-cyan-600 text-white shadow-lg'
+        ? 'py-3 px-3 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-1.5 bg-cyan-600 text-white shadow-lg'
         : baseClass;
 
       document.getElementById('status-CLOSED').className = tab === 'CLOSED'
-        ? 'py-3 px-4 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-2 bg-rose-600 text-white shadow-lg'
+        ? 'py-3 px-3 rounded-xl font-extrabold text-xs md:text-sm transition flex items-center justify-center gap-1.5 bg-rose-600 text-white shadow-lg'
         : baseClass;
 
       renderJobs();
@@ -177,22 +195,35 @@
       });
 
       const activeList = baseFiltered.filter(j => j.meta.status === 'ACTIVE');
+      const examList = baseFiltered.filter(j => j.meta.status === 'EXAM_DATE');
       const admitList = baseFiltered.filter(j => j.meta.status === 'ADMIT');
       const closedList = baseFiltered.filter(j => j.meta.status === 'CLOSED');
 
       document.getElementById('count-active').innerText = activeList.length;
+      document.getElementById('count-exam').innerText = examList.length;
       document.getElementById('count-admit').innerText = admitList.length;
       document.getElementById('count-closed').innerText = closedList.length;
 
-      const finalJobs = activeStatusTab === 'ACTIVE' ? activeList : (activeStatusTab === 'ADMIT' ? admitList : closedList);
-      document.getElementById('job-count').innerText = activeStatusTab === 'ACTIVE' 
-        ? `${finalJobs.length} Active Jobs` 
-        : (activeStatusTab === 'ADMIT' ? `${finalJobs.length} Admit Cards & Exam Dates` : `${finalJobs.length} Closed (Last 30 Days)`);
+      let finalJobs = activeList;
+      let labelText = `${activeList.length} Active Jobs`;
+
+      if (activeStatusTab === 'EXAM_DATE') {
+        finalJobs = examList;
+        labelText = `${examList.length} Upcoming Exam Dates`;
+      } else if (activeStatusTab === 'ADMIT') {
+        finalJobs = admitList;
+        labelText = `${admitList.length} Admit Cards Out`;
+      } else if (activeStatusTab === 'CLOSED') {
+        finalJobs = closedList;
+        labelText = `${closedList.length} Closed (Last 30 Days)`;
+      }
+
+      document.getElementById('job-count').innerText = labelText;
 
       const container = document.getElementById('jobs-container');
       if (finalJobs.length === 0) {
         container.innerHTML = `<div class="col-span-2 bg-slate-900 border border-slate-800 p-8 rounded-2xl text-center text-slate-400">
-          No items in this section matching your filter right now.
+          No official updates in this section right now. As soon as an official notice is released, it will appear here automatically!
         </div>`;
         return;
       }
@@ -203,17 +234,23 @@
         const hasM = job.meta.quals.includes('M');
         const isClosed = job.meta.status === 'CLOSED';
         const isAdmit = job.meta.status === 'ADMIT';
-        const isClosingSoon = !isClosed && !isAdmit && job.meta.daysLeft !== null && job.meta.daysLeft >= 0 && job.meta.daysLeft <= 5;
+        const isExam = job.meta.status === 'EXAM_DATE';
+        const isClosingSoon = !isClosed && !isAdmit && !isExam && job.meta.daysLeft !== null && job.meta.daysLeft >= 0 && job.meta.daysLeft <= 5;
+
+        const borderClass = isClosed ? 'border-rose-900/60 opacity-90' : (isAdmit ? 'border-cyan-700/70' : (isExam ? 'border-amber-600/70' : 'border-slate-800'));
+        const btnClass = isClosed ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : (isAdmit ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950' : (isExam ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'));
+        const btnText = isClosed ? '📄 View Closed Notification PDF ↗' : (isAdmit ? '🎫 Download Official Admit Card ↗' : (isExam ? '📅 View Official Exam Date Schedule ↗' : '📄 View Official Notification / Apply Now ↗'));
 
         return `
-          <div class="bg-slate-900 rounded-2xl border ${isClosed ? 'border-rose-900/60 opacity-90' : (isAdmit ? 'border-cyan-700/70' : 'border-slate-800')} overflow-hidden shadow-lg flex flex-col justify-between">
+          <div class="bg-slate-900 rounded-2xl border ${borderClass} overflow-hidden shadow-lg flex flex-col justify-between">
             <div>
               <!-- Card Header Banner -->
               <div class="bg-slate-800/90 border-b border-slate-700 px-4 py-2.5 flex justify-between items-center gap-2">
                 <span class="text-xs md:text-sm font-extrabold tracking-wide text-white">${job.meta.header}</span>
                 <div class="flex items-center gap-1.5 shrink-0">
                   ${isClosed ? `<span class="text-[10px] font-extrabold bg-rose-600 text-white px-2 py-0.5 rounded">🔴 CLOSED</span>` : ''}
-                  ${isAdmit ? `<span class="text-[10px] font-extrabold bg-cyan-500 text-slate-950 px-2 py-0.5 rounded">🎫 EXAM UPDATE</span>` : ''}
+                  ${isExam ? `<span class="text-[10px] font-extrabold bg-amber-500 text-slate-950 px-2 py-0.5 rounded">📅 EXAM DATE</span>` : ''}
+                  ${isAdmit ? `<span class="text-[10px] font-extrabold bg-cyan-500 text-slate-950 px-2 py-0.5 rounded">🎫 ADMIT CARD</span>` : ''}
                   ${isClosingSoon ? `<span class="text-[10px] font-extrabold bg-amber-500 text-black px-2 py-0.5 rounded animate-pulse">⏳ ${job.meta.daysLeft}d LEFT</span>` : ''}
                   <span class="text-[11px] font-semibold bg-slate-950 text-emerald-400 border border-slate-700 px-2.5 py-0.5 rounded-md">${job.source}</span>
                 </div>
@@ -242,12 +279,12 @@
                 <!-- Start Date & End Date Box -->
                 <div class="grid grid-cols-2 gap-2 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 text-xs">
                   <div>
-                    <span class="text-slate-400 block text-[11px]">${isAdmit ? '🟢 Notice Released' : '🟢 Start Date'}</span>
+                    <span class="text-slate-400 block text-[11px]">${isAdmit || isExam ? '🟢 Notice Date' : '🟢 Start Date'}</span>
                     <span class="font-bold text-emerald-400">${job.meta.startDate}</span>
                   </div>
                   <div class="border-l border-slate-800 pl-3">
-                    <span class="text-slate-400 block text-[11px]">${isAdmit ? '🎫 Exam / Schedule' : (isClosed ? '🔴 Closed On' : '🔴 Last Date')}</span>
-                    <span class="font-bold ${isClosed ? 'text-rose-500 line-through' : (isAdmit ? 'text-cyan-400' : 'text-rose-400')}">${job.meta.endDate}</span>
+                    <span class="text-slate-400 block text-[11px]">${isExam ? '📅 Exam Date / Schedule' : (isAdmit ? '🎫 Admit Card Status' : (isClosed ? '🔴 Closed On' : '🔴 Last Date'))}</span>
+                    <span class="font-bold ${isClosed ? 'text-rose-500 line-through' : (isAdmit ? 'text-cyan-400' : (isExam ? 'text-amber-400' : 'text-rose-400'))}">${job.meta.endDate}</span>
                   </div>
                 </div>
               </div>
@@ -256,8 +293,8 @@
             <!-- Card Footer Button -->
             <div class="p-3 bg-slate-950/50 border-t border-slate-800/80">
               <a href="${job.link}" target="_blank" rel="noopener noreferrer" 
-                 class="block w-full ${isClosed ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : (isAdmit ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950' : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950')} font-extrabold text-xs md:text-sm py-2.5 rounded-xl text-center transition">
-                ${isClosed ? '📄 View Closed Notification PDF ↗' : (isAdmit ? '🎫 Download Admit Card / View Exam Schedule ↗' : '📄 View Official Notification / Apply Now ↗')}
+                 class="block w-full ${btnClass} font-extrabold text-xs md:text-sm py-2.5 rounded-xl text-center transition">
+                ${btnText}
               </a>
             </div>
           </div>
