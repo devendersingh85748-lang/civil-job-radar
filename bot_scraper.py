@@ -4,25 +4,26 @@ import urllib3
 import requests
 import xml.etree.ElementTree as ET
 from bs4 import BeautifulSoup
-from supabase import create_client, Client
 
-# Govt websites ke SSL certificate errors ko bypass karne ke liye
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Auto-clean & fallback setup
+SUPABASE_URL = "https://hnrodyjundgwylskvhbj.supabase.co"
+SUPABASE_KEY = (os.environ.get("SUPABASE_KEY") or "sb_publishable_LdGBnlTBOeTRo9bpxnAZ8Q_y67l0BVy").strip()
+TELEGRAM_TOKEN = (os.environ.get("TELEGRAM_TOKEN") or "").strip()
+CHAT_ID = (os.environ.get("CHAT_ID") or "1061824304").replace("Id:", "").replace("id:", "").strip()
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 }
 
-# ==========================================
-# 1. QUALIFICATION & CIVIL FILTERS
-# ==========================================
+SUPABASE_HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json",
+    "Prefer": "return=minimal"
+}
+
 CATEGORIES = {
     "M.Tech (Lecturer / Scientist / Design)": [
         "lecturer", "polytechnic", "assistant professor", "faculty", "scientist",
@@ -44,14 +45,12 @@ CATEGORIES = {
     ]
 }
 
-# Non-engineering jobs ko block karne ke liye (Zero Spam)
 EXCLUDE_WORDS = [
     "staff nurse", "nursing", "medical officer", "pharmacist", "constable",
     "stenographer", "typist", "anatomist", "ayurvedic", "homeopathic",
     "veterinary", "driver", "peon", "sweeper", "tgt arts", "pgt hindi"
 ]
 
-# General notification words jo Civil ke liye zaroori ho sakte hain
 GENERAL_CIVIL_TRIGGERS = [
     "civil", "engineering", "engineer", "je", "ae", "jdlcce", "technical",
     "polytechnic", "lecturer", "advt", "advertisement", "recruitment", "vacancy"
@@ -61,21 +60,17 @@ def classify_job(title: str) -> str:
     t = title.lower()
     if any(bad in t for bad in EXCLUDE_WORDS):
         return None
-
     for category, keywords in CATEGORIES.items():
         if any(k in t for k in keywords):
             return category
-
-    # Agar general engineering/recruitment notice hai Official Govt site par
     if any(g in t for g in GENERAL_CIVIL_TRIGGERS):
         if "civil" in t or "engineering" in t or "jdlcce" in t or "polytechnic" in t:
             return "B.Tech / Diploma / M.Tech (General Civil)"
     return None
 
-# ==========================================
-# 2. DATABASE & TELEGRAM ALERT ENGINE
-# ==========================================
 def send_telegram_alert(title, source, category, link):
+    if not TELEGRAM_TOKEN:
+        return
     msg = (
         f"🚨 *100% Verified Civil Engg Job Update*\n\n"
         f"📌 *Title:* {title}\n"
@@ -91,7 +86,7 @@ def send_telegram_alert(title, source, category, link):
             "parse_mode": "Markdown",
             "disable_web_page_preview": False
         }, timeout=10)
-        time.sleep(1) # Telegram rate limit protection
+        time.sleep(1)
     except Exception as e:
         print(f"Telegram Error: {e}")
 
@@ -104,39 +99,44 @@ def process_item(title, source, link):
         return
 
     try:
-        # Check duplicate in Supabase
-        existing = supabase.table("civil_jobs").select("id").eq("link", link).execute()
-        if not existing.data:
-            supabase.table("civil_jobs").insert({
-                "title": title[:250],
-                "source": source,
-                "category": category,
-                "link": link
-            }).execute()
-            print(f"[NEW] {source}: {title}")
-            send_telegram_alert(title, source, category, link)
+        api_url = f"{SUPABASE_URL}/rest/v1/civil_jobs"
+        check = requests.get(
+            api_url,
+            headers=SUPABASE_HEADERS,
+            params={"link": f"eq.{link}", "select": "id"},
+            timeout=10
+        )
+        if check.status_code == 200 and len(check.json()) == 0:
+            ins = requests.post(
+                api_url,
+                headers=SUPABASE_HEADERS,
+                json={
+                    "title": title[:250],
+                    "source": source,
+                    "category": category,
+                    "link": link
+                },
+                timeout=10
+            )
+            if ins.status_code in [200, 201, 204]:
+                print(f"[NEW] {source}: {title}")
+                send_telegram_alert(title, source, category, link)
     except Exception as e:
-        print(f"Supabase Error: {e}")
+        print(f"Database Warning: {e}")
 
-# ==========================================
-# 3. DIRECT OFFICIAL GOVT PORTAL SCRAPERS
-# ==========================================
 DIRECT_PORTALS = [
-    # Jharkhand & Neighbouring States
     {"name": "JSSC Jharkhand", "url": "https://jssc.jharkhand.gov.in/notices", "base": "https://jssc.jharkhand.gov.in"},
     {"name": "JPSC Jharkhand", "url": "https://www.jpsc.gov.in/exam_files.php", "base": "https://www.jpsc.gov.in/"},
     {"name": "BPSC Bihar", "url": "https://www.bpsc.bih.nic.in/", "base": "https://www.bpsc.bih.nic.in/"},
     {"name": "BTSC Bihar (JE/AE)", "url": "https://btsc.bihar.gov.in/latest-update", "base": "https://btsc.bihar.gov.in"},
     {"name": "UPPSC UP", "url": "https://uppsc.up.nic.in/CandidatePages/Notifications.aspx", "base": "https://uppsc.up.nic.in"},
     {"name": "WBPSC West Bengal", "url": "https://psc.wb.gov.in/all_announcement.jsp", "base": "https://psc.wb.gov.in/"},
-    # Delhi / NCR & Metro / Rail
-    {"name": "DSSSB Delhi", "url": "https://dsssb.delhi.gov.in/ vacancy-advertisements", "base": "https://dsssb.delhi.gov.in"},
+    {"name": "DSSSB Delhi", "url": "https://dsssb.delhi.gov.in/vacancy-advertisements", "base": "https://dsssb.delhi.gov.in"},
     {"name": "DMRC Delhi Metro", "url": "https://www.delhimetrorail.com/pages/en/career", "base": "https://www.delhimetrorail.com"},
     {"name": "NCRTC (RRTS Metro)", "url": "https://ncrtc.in/jobs/", "base": "https://ncrtc.in"},
     {"name": "DFCCIL Railways", "url": "https://dfccil.com/Home/AllActiveCareer", "base": "https://dfccil.com"},
     {"name": "RITES Ltd", "url": "https://www.rites.com/Career", "base": "https://www.rites.com/"},
     {"name": "IRCON International", "url": "https://www.ircon.org/index.php?lang=en", "base": "https://www.ircon.org/"},
-    # R&D / Scientist / M.Tech Specialist
     {"name": "CSIR-CBRI Roorkee", "url": "https://cbri.res.in/careers/", "base": "https://cbri.res.in"},
     {"name": "CSIR-CRRI Delhi", "url": "https://crridom.gov.in/recruitment", "base": "https://crridom.gov.in"},
     {"name": "NIH Roorkee (Hydrology)", "url": "https://nihroorkee.gov.in/career-opportunities", "base": "https://nihroorkee.gov.in"}
@@ -157,37 +157,27 @@ def run_direct_scrapers():
         except Exception as e:
             print(f"Direct Scrape Warning ({portal['name']}): {e}")
 
-# ==========================================
-# 4. CENTRAL GOVT, PSUs, NIT/IIT & PRIVATE MNC ENGINE
-# (Bypasses JS/Cloudflare blocks via Verified Feeds)
-# ==========================================
 VERIFIED_SEARCH_FEEDS = [
-    # 1. Central Govt & Exams (SSC, RRB, UPSC, CPWD, CWC, BRO)
     {
         "source": "Central Govt (SSC / RRB / UPSC / NHAI)",
         "query": '(site:ssc.gov.in OR site:indianrailways.gov.in OR site:upsc.gov.in OR site:nhai.gov.in OR site:nbccindia.in) ("Junior Engineer" OR "Assistant Engineer" OR "Civil" OR "Recruitment" OR "JE")'
     },
-    # 2. State JE / AE / Polytechnic Lecturer (Jharkhand, Bihar, UP, Haryana, MP, Rajasthan)
     {
         "source": "State Govt (JE / AE / Lecturer)",
         "query": '(site:jssc.jharkhand.gov.in OR site:jpsc.gov.in OR site:bpsc.bih.nic.in OR site:uppsc.up.nic.in OR site:upsssc.gov.in OR site:hpsc.gov.in OR site:hssc.gov.in) ("Civil" OR "Junior Engineer" OR "Assistant Engineer" OR "Lecturer" OR "Polytechnic")'
     },
-    # 3. Maharatna / Navratna PSUs (NTPC, PGCIL, ONGC, IOCL, GAIL, BHEL,RVNL, THDC, NHPC)
     {
         "source": "PSU Civil Recruitment",
         "query": '(site:careers.ntpc.co.in OR site:powergrid.in OR site:iocl.com OR site:rvnl.org OR site:nhpcindia.com OR site:thdc.co.in OR site:npcilcareers.co.in) ("Civil" OR "Executive Trainee" OR "Diploma Trainee" OR "Assistant Engineer")'
     },
-    # 4. M.Tech Special: Polytechnic Lecturer, NITs, IITs, CSIR (Faculty / Scientist / Project)
     {
         "source": "Academic & Research (M.Tech / B.Tech)",
         "query": '(site:ac.in OR site:res.in OR site:aicte-india.org) ("Civil Engineering" OR "Structural" OR "Geotechnical") ("Lecturer" OR "Assistant Professor" OR "Scientist" OR "Project Associate" OR "Guest Faculty")'
     },
-    # 5. Top Private EPC & Construction Giants (L&T, Tata Projects, Shapoorji, Afcons, Dilip Buildcon, HCC, NCC, KEC)
     {
         "source": "Private EPC Giant (L&T / Tata / Afcons / Shapoorji)",
         "query": '("L&T Construction" OR "Larsen & Toubro" OR "Tata Projects" OR "Afcons" OR "Shapoorji Pallonji" OR "KEC International" OR "NCC Limited" OR "HG Infra") ("Civil Engineer" OR "Site Engineer" OR "Billing Engineer" OR "Planning Engineer" OR "Structural Engineer" OR "GET" OR "MT")'
     },
-    # 6. Top Global Design & Consultancy MNCs (AECOM, WSP, AtkinsRéalis, Jacobs, Ramboll, Arup, Mott MacDonald, SMEC, Systra, Egis)
     {
         "source": "Global Design MNC (WSP / AECOM / Atkins / Jacobs / Systra)",
         "query": '("AECOM" OR "WSP" OR "AtkinsRealis" OR "Jacobs" OR "Mott MacDonald" OR "Ramboll" OR "Arup" OR "Systra" OR "Egis" OR "SMEC" OR "STUP Consultants") ("Structural Engineer" OR "Bridge Engineer" OR "Geotechnical" OR "Civil Engineer" OR "Highway" OR "Water Resources" OR "BIM") ("India" OR "Gurugram" OR "Noida" OR "Delhi" OR "Kolkata" OR "Mumbai" OR "Bengaluru" OR "Hyderabad")'
@@ -197,7 +187,6 @@ VERIFIED_SEARCH_FEEDS = [
 def run_verified_feeds():
     for feed in VERIFIED_SEARCH_FEEDS:
         try:
-            # Google News RSS with strict 7-day freshness filter (when:7d)
             encoded_query = requests.utils.quote(f"{feed['query']} when:7d")
             rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
             r = requests.get(rss_url, headers=HEADERS, timeout=15)
@@ -209,9 +198,6 @@ def run_verified_feeds():
         except Exception as e:
             print(f"Feed Warning ({feed['source']}): {e}")
 
-# ==========================================
-# 5. DIRECT LINKEDIN & PRIVATE CAREERS SCRAPER (Public Guest API)
-# ==========================================
 PRIVATE_ROLES = [
     {"role": "Civil Structural Engineer", "loc": "India"},
     {"role": "Civil Billing Planning Engineer", "loc": "India"},
@@ -224,7 +210,6 @@ PRIVATE_ROLES = [
 def run_private_mnc_jobs():
     for item in PRIVATE_ROLES:
         try:
-            # LinkedIn Public Guest Job Search (Past 24 Hours: f_TPR=r86400)
             url = (
                 f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?"
                 f"keywords={requests.utils.quote(item['role'])}&"
@@ -243,7 +228,7 @@ def run_private_mnc_jobs():
                     job_title = title_el.get_text(strip=True)
                     company = company_el.get_text(strip=True)
                     location = loc_el.get_text(strip=True) if loc_el else "India"
-                    clean_link = link_el["href"].split("?")[0] # Remove tracking params
+                    clean_link = link_el["href"].split("?")[0]
 
                     full_title = f"{job_title} — {company} ({location})"
                     process_item(full_title, f"Private Direct ({company})", clean_link)
