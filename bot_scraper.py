@@ -32,9 +32,9 @@ SUPABASE_HEADERS = {
 STRICT_BLOCK_LIST = [
     # False "Civil" matches
     "civil services", "civil service", "civil judge", "civil court", "civil surgeon", "civil defence",
-    # Non-useful website junk
-    "unfair means", "act, 20", "jharkhand act", "answer key", "rejection list",
-    "debar", "tender", "quotation", "corrigendum", "archive", "recent examination",
+    # Non-useful website junk & dead links
+    "unfair means", "act, 20", "jharkhand act", "answer key", "rejection list", "exam_files.php",
+    "debar", "tender", "quotation", "corrigendum", "archive", "recent examination", "no record found",
     # Non-civil exams & posts
     "staff nurse", "nursing", "medical officer", "pharmacist", "constable", "stenographer",
     "typist", "ayurvedic", "homeopathic", "veterinary", "driver", "peon", "tgt ", "pgt ",
@@ -87,7 +87,7 @@ def analyze_job_card(title: str, source: str):
         mtech = has_word(t, ["lecturer", "polytechnic", "gate", "scientist", "assistant professor"])
         btech = True
         if not dip and not mtech:
-            dip = True  # Highlight both for general engineering exam schedules
+            dip = True
 
         header = "🩵 【 🎫 ADMIT CARD / EXAM DATE OUT 】"
         qual_code = f"{'D' if dip else ''}{'B' if btech else ''}{'M' if mtech else ''}"
@@ -104,7 +104,7 @@ def analyze_job_card(title: str, source: str):
             "sector": "🎫 Exam / Admit Card Alert"
         }
 
-    # Block results/interviews/press releases if not an Admit Card/Exam Date
+    # Block non-job notices if not an Admit Card/Exam Date
     non_job_notices = ["result", "merit list", "interview", "document verification", "syllabus", "calendar", "press release", "cutoff", "score card"]
     if any(nj in t for nj in non_job_notices):
         return None
@@ -245,7 +245,7 @@ def send_telegram_card(title, source, link, info):
         print(f"Telegram Error: {e}")
 
 def process_item(title, source, link):
-    if not title or not link:
+    if not title or not link or "exam_files.php" in link:
         return
     title = " ".join(title.split())
     info = analyze_job_card(title, source)
@@ -283,14 +283,14 @@ def process_item(title, source, link):
 # ==========================================
 DIRECT_PORTALS = [
     {"name": "JSSC Jharkhand", "url": "https://jssc.jharkhand.gov.in/notices", "base": "https://jssc.jharkhand.gov.in"},
-    {"name": "JPSC Jharkhand", "url": "https://www.jpsc.gov.in/exam_files.php", "base": "https://www.jpsc.gov.in/"},
+    {"name": "JPSC Jharkhand", "url": "https://www.jpsc.gov.in/", "base": "https://www.jpsc.gov.in"},
     {"name": "BTSC Bihar (JE/AE)", "url": "https://btsc.bihar.gov.in/latest-update", "base": "https://btsc.bihar.gov.in"},
     {"name": "UPPSC UP", "url": "https://uppsc.up.nic.in/CandidatePages/Notifications.aspx", "base": "https://uppsc.up.nic.in"},
     {"name": "DSSSB Delhi", "url": "https://dsssb.delhi.gov.in/vacancy-advertisements", "base": "https://dsssb.delhi.gov.in"},
     {"name": "DMRC Delhi Metro", "url": "https://www.delhimetrorail.com/pages/en/career", "base": "https://www.delhimetrorail.com"},
     {"name": "NCRTC (RRTS Metro)", "url": "https://ncrtc.in/jobs/", "base": "https://ncrtc.in"},
     {"name": "DFCCIL Railways", "url": "https://dfccil.com/Home/AllActiveCareer", "base": "https://dfccil.com"},
-    {"name": "RITES Ltd", "url": "https://www.rites.com/Career", "base": "https://www.rites.com/"},
+    {"name": "RITES Ltd", "url": "https://www.rites.com/Career", "base": "https://www.rites.com"},
     {"name": "CSIR-CBRI Roorkee", "url": "https://cbri.res.in/careers/", "base": "https://cbri.res.in"},
     {"name": "CSIR-CRRI Delhi", "url": "https://crridom.gov.in/recruitment", "base": "https://crridom.gov.in"}
 ]
@@ -311,22 +311,18 @@ def run_direct_scrapers():
             print(f"Direct Scrape Warning ({portal['name']}): {e}")
 
 VERIFIED_SEARCH_FEEDS = [
-    # 1. Central Govt Jobs
     {
         "source": "Central Govt (SSC / RRB / UPSC / NHAI)",
         "query": '(site:ssc.gov.in OR site:indianrailways.gov.in OR site:upsc.gov.in OR site:nhai.gov.in OR site:nbccindia.in) ("Junior Engineer" OR "Assistant Engineer" OR "Civil Engineer") ("Recruitment" OR "Advt" OR "Vacancy")'
     },
-    # 2. State Govt Jobs
     {
         "source": "State Govt (JE / AE / Polytechnic Lecturer)",
         "query": '(site:jssc.jharkhand.gov.in OR site:jpsc.gov.in OR site:bpsc.bih.nic.in OR site:uppsc.up.nic.in OR site:upsssc.gov.in OR site:hpsc.gov.in) ("Junior Engineer" OR "Assistant Engineer" OR "Polytechnic Lecturer") ("Recruitment" OR "Advt" OR "Vacancy")'
     },
-    # 3. PSU Jobs
     {
         "source": "PSU Civil Recruitment",
         "query": '(site:careers.ntpc.co.in OR site:powergrid.in OR site:iocl.com OR site:rvnl.org OR site:nhpcindia.com OR site:thdc.co.in) ("Civil Engineer" OR "Executive Trainee" OR "Diploma Trainee" OR "Assistant Engineer") ("Recruitment" OR "Advt")'
     },
-    # 4. Dedicated Admit Card & Exam Date Radar
     {
         "source": "Official Exam & Admit Card Radar",
         "query": '(site:ssc.gov.in OR site:jssc.jharkhand.gov.in OR site:jpsc.gov.in OR site:bpsc.bih.nic.in OR site:uppsc.up.nic.in OR site:rrbcdg.gov.in) ("Junior Engineer" OR "Assistant Engineer" OR "Polytechnic Lecturer" OR "SSC JE" OR "RRB JE" OR "JDLCCE") ("Admit Card" OR "Exam Date" OR "Examination Schedule" OR "Hall Ticket")'
