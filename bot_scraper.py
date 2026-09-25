@@ -30,16 +30,13 @@ SUPABASE_HEADERS = {
 # 1. STRICT NON-CIVIL & OLD JUNK BLOCKER
 # ==========================================
 STRICT_BLOCK_LIST = [
-    # False "Civil" matches
     "civil services", "civil service", "civil judge", "civil court", "civil surgeon", "civil defence",
-    # Non-useful website junk & dead links
     "unfair means", "act, 20", "jharkhand act", "answer key", "rejection list", "exam_files.php",
     "debar", "tender", "quotation", "corrigendum", "archive", "recent examination", "no record found",
-    # Non-civil exams & posts
     "staff nurse", "nursing", "medical officer", "pharmacist", "constable", "stenographer",
     "typist", "ayurvedic", "homeopathic", "veterinary", "driver", "peon", "tgt ", "pgt ",
     "chsl", "mts ", "gd constable", "sub-inspector", "excise", "lady supervisor", "tet ",
-    # Old years blocker
+    "ntpc graduate", "ntpc undergraduate", "alp ", "technician", "group d", "paramedical",
     "2019", "2020", "2021", "2022", "2023", "2024", "2025",
     "-01-2026", "-02-2026", "-03-2026", "-04-2026", "-05-2026", "-06-2026", "-07-2026"
 ]
@@ -66,12 +63,12 @@ def analyze_job_card(title: str, source: str):
     found_dates = re.findall(date_pattern, title, re.IGNORECASE)
     today_str = datetime.now().strftime("%d %b %Y")
     start_date = found_dates[0] if len(found_dates) >= 2 else today_str
-    end_date = found_dates[-1] if len(found_dates) >= 1 else "Check Official PDF"
+    end_date = found_dates[-1] if len(found_dates) >= 1 else "Check Official Notice"
 
     civil_exam_targets = [
-        "junior engineer", "je", "jdlcce", "ssc je", "rrb je",
+        "junior engineer", "je", "jdlcce", "ssc je", "rrb je", "cen 03/",
         "assistant engineer", "ae", "civil", "polytechnic", "lecturer",
-        "technical", "engineering", "gate", "ese", "dfccil", "dmrc", "psu"
+        "engineering services", "gate", "ese", "dfccil", "dmrc", "btsc", "jpsc", "jssc"
     ]
 
     # ------------------------------------------
@@ -81,8 +78,8 @@ def analyze_job_card(title: str, source: str):
         "admit card", "hall ticket", "e-admit card", "call letter", "city intimation"
     ]
     if not is_private and any(trig in t for trig in admit_triggers) and has_word(t, civil_exam_targets):
-        dip = has_word(t, ["je", "junior engineer", "jdlcce", "ssc je", "rrb je", "diploma", "technical"])
-        mtech = has_word(t, ["lecturer", "polytechnic", "gate", "scientist", "assistant professor"])
+        dip = has_word(t, ["je", "junior engineer", "jdlcce", "ssc je", "rrb je", "cen 03/", "diploma"])
+        mtech = has_word(t, ["lecturer", "polytechnic", "gate", "ese", "scientist", "assistant professor"])
         btech = True
         if not dip and not mtech:
             dip = True
@@ -108,11 +105,12 @@ def analyze_job_card(title: str, source: str):
     exam_date_triggers = [
         "exam date", "examination date", "date of examination",
         "exam schedule", "examination schedule", "exam calendar",
-        "examination calendar", "tentative schedule", "cbt date", "schedule of examination"
+        "examination calendar", "tentative schedule", "cbt date",
+        "schedule of examination", "cbt-1", "cbt 1", "paper-i", "paper-ii"
     ]
     if not is_private and any(trig in t for trig in exam_date_triggers) and has_word(t, civil_exam_targets):
-        dip = has_word(t, ["je", "junior engineer", "jdlcce", "ssc je", "rrb je", "diploma", "technical"])
-        mtech = has_word(t, ["lecturer", "polytechnic", "gate", "scientist", "assistant professor"])
+        dip = has_word(t, ["je", "junior engineer", "jdlcce", "ssc je", "rrb je", "cen 03/", "diploma"])
+        mtech = has_word(t, ["lecturer", "polytechnic", "gate", "ese", "scientist", "assistant professor"])
         btech = True
         if not dip and not mtech:
             dip = True
@@ -133,7 +131,7 @@ def analyze_job_card(title: str, source: str):
         }
 
     # Block non-job notices if not Admit Card or Exam Date
-    non_job_notices = ["result", "merit list", "interview", "document verification", "syllabus", "calendar", "press release", "cutoff", "score card"]
+    non_job_notices = ["result", "merit list", "interview", "document verification", "syllabus", "press release", "cutoff", "score card"]
     if any(nj in t for nj in non_job_notices):
         return None
 
@@ -144,7 +142,7 @@ def analyze_job_card(title: str, source: str):
         recruitment_signals = [
             "recruitment", "advt", "advertisement", "vacancy", "vacancies",
             "notification", "apply online", "online application", "jdlcce",
-            "ssc je", "rrb je", "employment notice", "walk-in", "engagement of"
+            "ssc je", "rrb je", "employment notice", "walk-in", "engagement of", "cen "
         ]
         if not any(sig in t for sig in recruitment_signals):
             return None
@@ -243,8 +241,8 @@ def send_telegram_card(title, source, link, info):
         btn_label = "🎫 Download Admit Card / Hall Ticket ↗"
     elif cat_str.startswith("EXAM_DATE"):
         date_label_1 = "🟢 <b>Notice Date:</b>"
-        date_label_2 = "📅 <b>Exam Date:</b>"
-        btn_label = "📅 View Official Exam Date Schedule ↗"
+        date_label_2 = "📅 <b>Exam Schedule:</b>"
+        btn_label = "📅 View Exam Date Notice ↗"
     else:
         date_label_1 = "🟢 <b>Notification Date:</b>"
         date_label_2 = "🔴 <b>Last Date:</b>"
@@ -316,9 +314,11 @@ def process_item(title, source, link):
         print(f"Database Warning: {e}")
 
 # ==========================================
-# 4. OFFICIAL GOVT, EXAM DATE, ADMIT CARD & MNC SCRAPERS
+# 4. OFFICIAL GOVT, RRB, EXAM DATE & MNC SCRAPERS
 # ==========================================
 DIRECT_PORTALS = [
+    {"name": "RRB Railways Official", "url": "https://www.rrbcdg.gov.in/", "base": "https://www.rrbcdg.gov.in"},
+    {"name": "UPSC Official", "url": "https://upsc.gov.in/whats-new", "base": "https://upsc.gov.in"},
     {"name": "JSSC Jharkhand", "url": "https://jssc.jharkhand.gov.in/notices", "base": "https://jssc.jharkhand.gov.in"},
     {"name": "JPSC Jharkhand", "url": "https://www.jpsc.gov.in/", "base": "https://www.jpsc.gov.in"},
     {"name": "BTSC Bihar (JE/AE)", "url": "https://btsc.bihar.gov.in/latest-update", "base": "https://btsc.bihar.gov.in"},
@@ -349,35 +349,27 @@ def run_direct_scrapers():
 
 VERIFIED_SEARCH_FEEDS = [
     {
-        "source": "Central Govt (SSC / RRB / UPSC / NHAI)",
-        "query": '(site:ssc.gov.in OR site:indianrailways.gov.in OR site:upsc.gov.in OR site:nhai.gov.in OR site:nbccindia.in) ("Junior Engineer" OR "Assistant Engineer" OR "Civil Engineer") ("Recruitment" OR "Advt" OR "Vacancy")'
+        "source": "Exam Date Radar (SSC / RRB / State AE-JE)",
+        "query": '("SSC JE" OR "RRB JE" OR "JSSC JE" OR "JPSC AE" OR "BPSC AE" OR "UPPSC AE" OR "BTSC JE" OR "Polytechnic Lecturer" OR "DFCCIL") ("Exam Date" OR "Exam Schedule" OR "CBT Date" OR "Examination Calendar")'
     },
     {
-        "source": "State Govt (JE / AE / Polytechnic Lecturer)",
-        "query": '(site:jssc.jharkhand.gov.in OR site:jpsc.gov.in OR site:bpsc.bih.nic.in OR site:uppsc.up.nic.in OR site:upsssc.gov.in OR site:hpsc.gov.in) ("Junior Engineer" OR "Assistant Engineer" OR "Polytechnic Lecturer") ("Recruitment" OR "Advt" OR "Vacancy")'
+        "source": "Admit Card Radar (SSC / RRB / State AE-JE)",
+        "query": '("SSC JE" OR "RRB JE" OR "JSSC JE" OR "JPSC" OR "BPSC" OR "UPPSC" OR "BTSC JE") ("Admit Card" OR "Hall Ticket" OR "City Intimation" OR "Call Letter")'
     },
     {
-        "source": "PSU Civil Recruitment",
-        "query": '(site:careers.ntpc.co.in OR site:powergrid.in OR site:iocl.com OR site:rvnl.org OR site:nhpcindia.com OR site:thdc.co.in) ("Civil Engineer" OR "Executive Trainee" OR "Diploma Trainee" OR "Assistant Engineer") ("Recruitment" OR "Advt")'
-    },
-    {
-        "source": "Official Upcoming Exam Date Radar",
-        "query": '(site:ssc.gov.in OR site:jssc.jharkhand.gov.in OR site:jpsc.gov.in OR site:bpsc.bih.nic.in OR site:uppsc.up.nic.in OR site:rrbcdg.gov.in) ("Junior Engineer" OR "Assistant Engineer" OR "Polytechnic Lecturer" OR "SSC JE" OR "RRB JE" OR "JDLCCE") ("Exam Date" OR "Examination Schedule" OR "Date of Examination")'
-    },
-    {
-        "source": "Official Admit Card Radar",
-        "query": '(site:ssc.gov.in OR site:jssc.jharkhand.gov.in OR site:jpsc.gov.in OR site:bpsc.bih.nic.in OR site:uppsc.up.nic.in OR site:rrbcdg.gov.in) ("Junior Engineer" OR "Assistant Engineer" OR "Polytechnic Lecturer" OR "SSC JE" OR "RRB JE" OR "JDLCCE") ("Admit Card" OR "Hall Ticket" OR "Call Letter" OR "City Intimation")'
+        "source": "Central & PSU Civil Recruitment",
+        "query": '("SSC JE" OR "RRB JE" OR "NBCC" OR "NHAI" OR "NTPC" OR "PGCIL" OR "RITES" OR "RVNL" OR "IRCON") ("Civil Engineer" OR "Junior Engineer" OR "Assistant Engineer" OR "Executive Trainee") ("Recruitment" OR "Notification" OR "Vacancy")'
     }
 ]
 
 def run_verified_feeds():
     for feed in VERIFIED_SEARCH_FEEDS:
         try:
-            encoded_query = requests.utils.quote(f"{feed['query']} when:7d")
+            encoded_query = requests.utils.quote(f"{feed['query']} when:30d")
             rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
             r = requests.get(rss_url, headers=HEADERS, timeout=15)
             root = ET.fromstring(r.content)
-            for item in root.findall(".//item")[:10]:
+            for item in root.findall(".//item")[:12]:
                 title = item.find("title").text
                 link = item.find("link").text
                 process_item(title, feed["source"], link)
