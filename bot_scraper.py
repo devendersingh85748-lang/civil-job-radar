@@ -1,13 +1,15 @@
 import os
+import re
 import time
+import html
 import urllib3
 import requests
 import xml.etree.ElementTree as ET
+from datetime import datetime
 from bs4 import BeautifulSoup
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Auto-clean & fallback setup
 SUPABASE_URL = "https://hnrodyjundgwylskvhbj.supabase.co"
 SUPABASE_KEY = (os.environ.get("SUPABASE_KEY") or "sb_publishable_LdGBnlTBOeTRo9bpxnAZ8Q_y67l0BVy").strip()
 TELEGRAM_TOKEN = (os.environ.get("TELEGRAM_TOKEN") or "").strip()
@@ -24,68 +26,141 @@ SUPABASE_HEADERS = {
     "Prefer": "return=minimal"
 }
 
-CATEGORIES = {
-    "M.Tech (Lecturer / Scientist / Design)": [
-        "lecturer", "polytechnic", "assistant professor", "faculty", "scientist",
-        "structural engineer", "structural design", "geotechnical", "transportation",
-        "water resources", "environmental", "bridge design", "m.tech", "mtech",
-        "project scientist", "research associate", "srf", "jrf", "cbri", "crri", "bim"
-    ],
-    "B.Tech (AE / PSU / Site & Billing)": [
-        "assistant engineer", "ae ", "a.e.", "sub divisional officer", "sdo",
-        "executive engineer", "graduate engineer", "get ", "management trainee",
-        "executive trainee", "gate ", "site engineer", "billing engineer",
-        "planning engineer", "qs ", "quantity surveyor", "qa/qc", "highway engineer",
-        "resident engineer", "project engineer", "contracts engineer", "civil engineer"
-    ],
-    "Diploma (JE / Technical / Supervisor)": [
-        "junior engineer", "je ", "j.e.", "jdlcce", "ssc je", "rrb je",
-        "diploma trainee", "det ", "overseer", "surveyor", "draughtsman",
-        "site supervisor", "technical assistant", "work inspector", "amin"
-    ]
-}
-
 EXCLUDE_WORDS = [
     "staff nurse", "nursing", "medical officer", "pharmacist", "constable",
     "stenographer", "typist", "anatomist", "ayurvedic", "homeopathic",
     "veterinary", "driver", "peon", "sweeper", "tgt arts", "pgt hindi"
 ]
 
-GENERAL_CIVIL_TRIGGERS = [
-    "civil", "engineering", "engineer", "je", "ae", "jdlcce", "technical",
-    "polytechnic", "lecturer", "advt", "advertisement", "recruitment", "vacancy"
-]
-
-def classify_job(title: str) -> str:
+# ==========================================
+# 1. SMART ROLE HEADER, QUALIFICATION & DATE EXTRACTOR
+# ==========================================
+def analyze_job_card(title: str, source: str):
     t = title.lower()
     if any(bad in t for bad in EXCLUDE_WORDS):
         return None
-    for category, keywords in CATEGORIES.items():
-        if any(k in t for k in keywords):
-            return category
-    if any(g in t for g in GENERAL_CIVIL_TRIGGERS):
-        if "civil" in t or "engineering" in t or "jdlcce" in t or "polytechnic" in t:
-            return "B.Tech / Diploma / M.Tech (General Civil)"
-    return None
 
-def send_telegram_alert(title, source, category, link):
+    is_private = any(x in source.lower() for x in ["private", "mnc", "epc"])
+
+    # Default qualification flags
+    dip, btech, mtech = False, False, False
+    header = ""
+    short_cat = ""
+
+    # 1. Check M.Tech / Lecturer / Scientist / Specialist Design
+    if any(k in t for k in [
+        "lecturer", "polytechnic", "assistant professor", "faculty", "scientist",
+        "structural", "geotechnical", "transportation", "water resources",
+        "bridge design", "m.tech", "mtech", "research associate", "srf", "jrf", "bim"
+    ]):
+        mtech = True
+        btech = True
+        if "lecturer" in t or "professor" in t or "faculty" in t or "polytechnic" in t:
+            header = "🟪 【 🎓 LECTURER / ACADEMIC FACULTY 】"
+        elif "scientist" in t or "srf" in t or "jrf" in t or "research" in t:
+            header = "🟪 【 🔬 SCIENTIST / R&D PROJECT 】"
+        else:
+            header = "🟪 【 📐 M.TECH SPECIALIST / DESIGN 】"
+        short_cat = "M.Tech"
+
+    # 2. Check Diploma / JE Level
+    elif any(k in t for k in [
+        "junior engineer", "je ", "j.e.", "jdlcce", "ssc je", "rrb je",
+        "diploma", "det ", "overseer", "surveyor", "draughtsman",
+        "site supervisor", "technical assistant", "work inspector", "amin"
+    ]):
+        dip = True
+        btech = True  # B.Tech is also eligible in SSC JE, RRB JE, JSSC JE, etc.
+        header = "🟨 【 👷 JUNIOR ENGINEER (JE) / DIPLOMA 】"
+        short_cat = "Diploma"
+
+    # 3. Check B.Tech / AE / PSU / Site & Billing
+    elif any(k in t for k in [
+        "assistant engineer", "ae ", "a.e.", "sdo", "executive engineer",
+        "graduate engineer", "get ", "management trainee", "executive trainee",
+        "gate ", "site engineer", "billing", "planning", "quantity surveyor",
+        "qa/qc", "highway", "resident engineer", "project engineer", "contracts", "civil"
+    ]):
+        btech = True
+        if any(x in t for x in ["assistant engineer", "ae ", "a.e.", "sdo", "executive", "gate ", "psu"]):
+            header = "🟦 【 🏛️ ASSISTANT ENGINEER (AE) / PSU 】"
+            mtech = True
+        elif is_private or any(x in t for x in ["site", "billing", "planning", "qa/qc", "qs"]):
+            header = "🟧 【 🏗️ MNC SITE / BILLING / PLANNING 】"
+            dip = True
+        else:
+            header = "🟦 【 🏛️ B.TECH CIVIL RECRUITMENT 】"
+        short_cat = "B.Tech"
+
+    else:
+        return None
+
+    # Extract dates if mentioned in title/notice text
+    date_pattern = r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})'
+    found_dates = re.findall(date_pattern, title, re.IGNORECASE)
+
+    today_str = datetime.now().strftime("%d %b %Y")
+    start_date = found_dates[0] if len(found_dates) >= 2 else today_str
+    end_date = found_dates[-1] if len(found_dates) >= 1 else "Refer Official PDF"
+
+    # Build visual badge string
+    d_badge = "✅ <b>DIPLOMA</b>" if dip else "⬜ Diploma"
+    b_badge = "✅ <b>B.TECH</b>" if btech else "⬜ B.Tech"
+    m_badge = "✅ <b>M.TECH</b>" if mtech else "⬜ M.Tech"
+
+    qual_code = f"{'D' if dip else ''}{'B' if btech else ''}{'M' if mtech else ''}"
+
+    # Pack metadata into category column so Supabase needs zero schema changes
+    packed_category = f"{short_cat}|{header}|{qual_code}|{start_date}|{end_date}"
+
+    return {
+        "header": header,
+        "d_badge": d_badge,
+        "b_badge": b_badge,
+        "m_badge": m_badge,
+        "start_date": start_date,
+        "end_date": end_date,
+        "packed_category": packed_category,
+        "sector": "🏢 Private MNC" if is_private else "🏛️ Govt / PSU"
+    }
+
+# ==========================================
+# 2. TELEGRAM RICH CARD SENDER (HTML + BUTTON)
+# ==========================================
+def send_telegram_card(title, source, link, info):
     if not TELEGRAM_TOKEN:
         return
-    msg = (
-        f"🚨 *100% Verified Civil Engg Job Update*\n\n"
-        f"📌 *Title:* {title}\n"
-        f"🏛️ *Organization:* `{source}`\n"
-        f"🎓 *Target Level:* *{category}*\n\n"
-        f"🔗 [Open Official Link / Notification PDF]({link})"
+
+    safe_title = html.escape(title)
+    safe_source = html.escape(source)
+
+    card_text = (
+        f"<b>{info['header']}</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <b>Post:</b> {safe_title}\n"
+        f"🏢 <b>Dept/Org:</b> <code>{safe_source}</code> ({info['sector']})\n\n"
+        f"🎓 <b>ELIGIBILITY HIGHLIGHT:</b>\n"
+        f"{info['d_badge']}  |  {info['b_badge']}  |  {info['m_badge']}\n\n"
+        f"📅 <b>IMPORTANT DATES:</b>\n"
+        f"🟢 <b>Start / Posted:</b> {info['start_date']}\n"
+        f"🔴 <b>Last Date:</b> {info['end_date']}\n"
+        f"━━━━━━━━━━━━━━━━━━━━"
     )
+
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": card_text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+        "reply_markup": {
+            "inline_keyboard": [[
+                {"text": "📄 Official Notification / Apply Now ↗", "url": link}
+            ]]
+        }
+    }
     try:
-        requests.post(url, json={
-            "chat_id": CHAT_ID,
-            "text": msg,
-            "parse_mode": "Markdown",
-            "disable_web_page_preview": False
-        }, timeout=10)
+        requests.post(url, json=payload, timeout=10)
         time.sleep(1)
     except Exception as e:
         print(f"Telegram Error: {e}")
@@ -94,8 +169,8 @@ def process_item(title, source, link):
     if not title or not link or len(title.strip()) < 8:
         return
     title = " ".join(title.split())
-    category = classify_job(title)
-    if not category:
+    info = analyze_job_card(title, source)
+    if not info:
         return
 
     try:
@@ -113,17 +188,20 @@ def process_item(title, source, link):
                 json={
                     "title": title[:250],
                     "source": source,
-                    "category": category,
+                    "category": info["packed_category"],
                     "link": link
                 },
                 timeout=10
             )
             if ins.status_code in [200, 201, 204]:
-                print(f"[NEW] {source}: {title}")
-                send_telegram_alert(title, source, category, link)
+                print(f"[NEW CARD] {info['header']} -> {title}")
+                send_telegram_card(title, source, link, info)
     except Exception as e:
         print(f"Database Warning: {e}")
 
+# ==========================================
+# 3. SCRAPERS (GOVT + PSU + R&D + MNC)
+# ==========================================
 DIRECT_PORTALS = [
     {"name": "JSSC Jharkhand", "url": "https://jssc.jharkhand.gov.in/notices", "base": "https://jssc.jharkhand.gov.in"},
     {"name": "JPSC Jharkhand", "url": "https://www.jpsc.gov.in/exam_files.php", "base": "https://www.jpsc.gov.in/"},
@@ -236,7 +314,7 @@ def run_private_mnc_jobs():
             print(f"Private Job Scrape Warning ({item['role']}): {e}")
 
 if __name__ == "__main__":
-    print("🚀 Starting Complete Civil Engineering Job Radar...")
+    print("🚀 Starting Structured Card Civil Job Radar...")
     run_direct_scrapers()
     run_verified_feeds()
     run_private_mnc_jobs()
